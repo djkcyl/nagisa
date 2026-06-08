@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/nagisa-types",
+    "crates/nagisa-core",
+    "crates/nagisa-onebot",
+    "crates/nagisa-milky",
+    "crates/nagisa-macros",
+    "crates/nagisa-log",
+    "crates/nagisa",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.2.0"
+license = "MIT OR Apache-2.0"
+authors = ["djkcyl"]
+repository = "https://github.com/djkcyl/nagisa"
+
+[workspace.dependencies]
+async-trait = "0.1.89"
+axum = "0.8.9"
+bytes = "1.11.1"
+# 日志时间戳用本地时区(只要 clock,不要默认的 wasm/serde 等附件)。
+chrono = { version = "0.4.42", default-features = false, features = ["clock"] }
+dashmap = "6.2.1"
+futures = "0.3.32"
+futures-util = "0.3.32"
+nagisa-core = { version = "0.2.0", path = "crates/nagisa-core" }
+nagisa-log = { version = "0.2.0", path = "crates/nagisa-log" }
+nagisa-types = { version = "0.2.0", path = "crates/nagisa-types" }
+reqwest = { version = "0.13.4", default-features = false }
+serde = "1.0.228"
+serde_json = "1.0.150"
+thiserror = "2.0.18"
+tokio = "1.52.3"
+tokio-tungstenite = "0.29.0"
+tokio-util = "0.7.18"
+tower = "0.5.3"
+tracing = "0.1.44"
+tracing-appender = "0.2.3"
+tracing-subscriber = { version = "0.3.23", default-features = false }
+url = "2.5.8"
+nagisa-macros = { version = "0.2.0", path = "crates/nagisa-macros" }
+proc-macro-crate = "3.5.0"
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+regex = "1.12.3"
+syn = "2.0.117"
+inventory = "0.3.24"
+nagisa-milky = { version = "0.2.0", path = "crates/nagisa-milky" }
+nagisa-onebot = { version = "0.2.0", path = "crates/nagisa-onebot" }

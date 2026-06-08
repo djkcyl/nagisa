@@ -1,0 +1,193 @@
+# Nagisa
+
+> Rust QQ 机器人框架:声明式宏注册命令/事件,提取器注入参数,同一套业务代码可跑 OneBot v11(Lagrange / NapCat / LLOneBot)与 Milky 两种协议端。
+
+本文件面向**用 nagisa 写 bot 的 LLM / 编码代理**。你手里有完整源码(本仓即依赖源,rustdoc 全中文,模块顶部 `//!` 写明契约):**精确签名、枚举变体、默认值一律以源码为准,写之前去查,不要凭训练记忆发明 API**。本文只做三件事:
+
+1. **能力地图**——框架有什么能力、入口在哪个文件,按锚点名 grep 即达;
+2. **最小模板**——编译验证过,可直接拷贝;
+3. **坑清单**——编译器和签名都不会告诉你的行为陷阱,务必通读。
+
+人类向概览见 README.md;在本仓改框架本身见 AGENTS.md;可运行示例见 `crates/nagisa/examples/`。
+
+## 接入模板(可直接拷贝,已编译验证)
+
+Cargo.toml:
+
+```toml
+[dependencies]
+# nagisa 未发布 crates.io,用 path 依赖(按实际相对路径调整)
+nagisa = { path = "../nagisa/crates/nagisa", default-features = false, features = ["onebot"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# features:onebot / milky / log(默认 = ["onebot", "milky"])。
+# 不需要 async-trait / inventory / anyhow——前两者经 nagisa 门面转出,错误口径自带。
+# 也不要直接依赖 nagisa-core / nagisa-types:能编译过,但 bot 只应依赖 nagisa 门面这一个口。
+```
+
+src/main.rs:
+
+```rust
+use nagisa::prelude::*;
+
+mod plugins; // 同 crate 的 mod 声明即可让 #[command]/#[event] 自动注册(plugins/mod.rs 里 pub mod 各插件)
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    App::new()
+        .superusers([123456789i64]) // QQ 号是 i64(Uin 只实现 From<i64>,u64 编译不过)
+        .run_onebot(
+            OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"),
+            ctrl_c_shutdown(),
+        )
+        .await
+}
+```
+
+src/plugins/sign.rs(一个完整插件):
+
+```rust
+use nagisa::prelude::*;
+
+plugin! {
+    name = "签到",
+    key = "sign",
+    description = "每日签到",        // 帮助菜单直接展示给用户的文案
+    usage = "签到 / 转账 @某人 金额",
+    category = User,                 // Core | User | Tool | Fun | Push | Admin
+}
+
+// 本模块内的 #[command]/#[event] 按模块路径自动归属上面的插件。
+#[command("签到", "sign")]
+async fn sign(reply: Reply, sender: Sender) -> HandlerResult {
+    let Sender(uin) = sender;
+    reply.text(format!("{} 签到成功", uin.0)).await?;
+    Ok(())
+}
+
+// 带类型参数的命令:解析失败回贴 usage(不配 usage 则 prod 静默跳过)。
+#[derive(Args)]
+struct Transfer {
+    #[arg(at_or_id)]
+    target: Uin, // 群里 @某人,或直接给 QQ 号
+    amount: u64, // 文本位置参
+}
+
+#[command("转账", usage = "转账 @某人 金额", cooldown = 10)]
+async fn transfer(reply: Reply, args: Args<Transfer>) -> HandlerResult {
+    let Transfer { target, amount } = args.0;
+    reply.msg().at(target).text(format!(" 收到 {amount}")).send().await?;
+    Ok(())
+}
+
+// 事件:进群欢迎。
+#[event(MemberJoin)]
+async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
+    bot.group(j.group).send(&Msg::new().at(j.user).text(" 欢迎!").build()).await?;
+    Ok(())
+}
+```
+
+## 心智模型
+
+- handler 是普通 async fn:**非泛型、无 self**,形参全部是提取器(`FromContext`),返回 `HandlerResult`。
+- 注册两条路:宏(`#[command]` / `#[event]`,经 inventory 自动收集,`App::new()` 即登记)或命令式(`app.command` / `on` / `on_top` / `command_with` / `on_with`)。
+- 三层分发:**top 观察者(恒跑、永不被拦)→ waiter(多轮会话挂起的等待,命中且 block=true 时吞掉事件)→ 默认 handler**。
+- 提取器失败两种语义:`Skip`(本 handler 不适用,静默跳过,事件继续传播)/ `Error`(真错误,记日志、handler 不跑)。
+- handler 返回 `Err`:框架记 warn 日志,分发继续,**不会自动回贴用户**——要给用户反馈,返回前自行 `reply`。
+
+## 能力地图(做什么 → 去哪查)
+
+下面每条:能做什么 → 入口文件(从仓根起算)→ 该领域里**签名看不出来的非显然契约**。文件指的是模块,签名细节进文件里读 rustdoc。
+
+### 命令与事件注册(宏)
+
+- 能力:`#[command]`(字面命令/正则/具名槽三种匹配器;@我限定、优先级、usage、门控、冷却、开关元数据)、`#[event]`(37 种 `EventKind`:消息/25 通知/4 请求/6 生命周期/Raw)、`plugin!{}`(插件登记,同模块触发器自动归属)、`#[derive(Args/ArgEnum/Slots)]`、`matcher!{}` 内联糖。
+- 查:`crates/nagisa-macros/src/lib.rs`(7 个宏入口的属性键契约全在此文件 rustdoc)→ 实现 `attrs.rs` / `args_derive.rs` / `slots.rs` / `plugin.rs`;`EventKind` 全清单在 `crates/nagisa-core/src/event_trigger.rs`。
+- 非显然:匹配器三选一必给其一(多给/全缺编译错);`#[event]` 拒绝 `usage` / `mention_me` / `slots`;多词命令的字面空格放宽为 `\s+`;`id`/`name` 缺省取 fn 名,`can_disable`/`default_enable` 缺省 true。
+
+### 参数解析
+
+- 能力:文本位置参 / `Option` 可选 / `default=` 缺省 / `--长短选项` / 旗标 / 六种消息元素参(图、语音、视频、@、引用、表情)/ `at_or_id`(@ 或裸 QQ 号)/ `rest(,raw)` 收尾;`ArgEnum` 受限选项;`Slots` 整句具名槽。
+- 查:`crates/nagisa-core/src/args.rs`(`FromArg` 已实现类型清单、token 流、元素投影助手)、`crates/nagisa-macros/src/args_derive.rs`(各 `#[arg]` 形态)、`crates/nagisa-core/src/slots.rs`。
+- 非显然:`#[arg(at)]` 只认真正的 @ 段,文本「@123」要 `at_or_id`;旗标只认前导位置;`ArgText`(命令后整段文本自己切)是不想定义结构体时的轻量主力。
+
+### 提取器(handler 形参)
+
+- 能力:消息类(`GroupMessage` / `PrivateMessage` / `Sender` / `EventPeer` / `Scene` / `Reply` / `ToMe` / `At` / `Image`)、命令后(`Command` / `CommandArg` / `ArgText` / `Captures` / `Args<T>` / `Slots<T>`)、事件载荷(`MemberJoin` 等 12 个扁平 + `Connect`/`Ready` 等 6 个生命周期)、通用(`Bot` / `Arc<Event>` / `State<T>` / `Option<T>`)、引擎句柄(`Cd` / `Session`)、自定义 `FromContext`。
+- 查:`crates/nagisa-core/src/extract.rs`(基础提取器全在此)、`event_trigger.rs`(事件载荷及其字段);自定义 `FromContext` 复用 `State::from_context`、`ctx.message()`、`Reject::Skip/Error`,形态参考 `extract.rs` 里现成的实现。
+- 非显然:`Option<T>` 把内层 Skip 变 None(handler 照跑);没有扁平提取器的通知/请求种类取 `Notice` / `Request` / `Meta` 裸枚举自行 match;事件载荷的 id 字段都是 `Uin`,`bot.group(j.group)` 直接收。
+
+### 发消息
+
+- 能力:`reply.text(..)` 单段快捷 / `reply.msg()...send()` 链式混排 / `Msg::new()...build()` 脱离 Reply 拼 `Message` / `bot.send(&peer, &segs)` 发任意会话;合并转发(含嵌套、卡片标题);引用、@、图片三态(url/bytes/path)、表情。
+- 查:`Reply` / `ReplyMsg` 在 `crates/nagisa-core/src/extract.rs`;`Msg` 与 `MessageExt`(收到的消息上的查询)在 `crates/nagisa-types/src/message.rs`;`Segment` 构造器与 `Forward` / `ForwardNode` 在 `crates/nagisa-types/src/segment.rs`。
+- 非显然:**没有 send_forward 方法**——合并转发就是普通段 `Segment::forward(nodes)`;Milky 端解码 `ForwardNode.user` 恒为 `Uin(0)`(以 name 为准);所有发送返回 `MessageId` 可存供撤回/引用;链式 builder 是值语义,条件追加段用 `msg = msg.text(..)` 重新绑定。
+
+### 域模型(拆解收到的消息/事件)
+
+- 能力:`Segment` 全变体(基础/媒体/转发/卡片互动/厂商私有/`Raw` 逃生口)、`MessageEvent` 字段(含 `is_self` 回显标记与 `raw` 原始 wire JSON)、`Event` 顶层 5 变体与 `peer()/group()/sender()` 寻址辅助、`Peer{scene,id}` / `Scene` / `Uin` / `MessageId`、`Media` 收发两侧。
+- 查:`crates/nagisa-types/src/segment.rs`、`event.rs`、`id.rs`、`resource.rs`、`message.rs`。
+- 非显然:收到的图拿下载地址走 `res.recv.as_ref()?.url`(`Media` **没有** `url()`/`bytes()` 访问器);协议端私有字段从 `.raw` 捞;`Uin(pub i64)` 有 `.is_user()` 启发式;解不出的段/事件降级 `Raw`,绝不丢。
+
+### 动作(Bot)
+
+- 能力:发/撤/已读、按 id 取消息与历史、资料与列表、群管理全套(禁言/管理员/名片/头衔/踢/退/群头像)、**请求批复**(`handle_request` + 不透明 `RequestToken`)、表态/精华、戳一戳/点赞、群文件与文件夹全套、公告、自身资料、cookies/csrf;选择器链 `bot.group(g).member(u).mute(..)` / `bot.friend(u).poke()`;协议/厂商专属直达 `bot.actions()`(OneBot 侧 145 个、Milky 侧 12 个);`call_raw` 任意动作逃生口;`supports(Capability)` 运行时能力探测。
+- 查:`crates/nagisa-core/src/bot.rs`(平铺方法,按功能分节)、`refs.rs`(选择器链)、`invoker/mod.rs`(两协议通用动作)+ `invoker/onebot.rs` / `invoker/milky.rs`(协议专属)、`crates/nagisa-types/src/capability.rs`(`Capability` 全变体)。
+- 非显然:不支持的动作返回 `Err(Unsupported)` 而非编译错(切协议业务代码不变);`RequestToken` 从请求事件里原样回传,**不要拆**;OneBot 的 `_async`/`_rate_limited` 后缀变体只能 `call_raw`。
+
+### 错误处理
+
+- 能力:自有 `Result` / `Error`(无 anyhow);handler 内 `bail!("..")` / `bail!(kind, "..")` 提前返回;外部错误 `.context("..")?` 归一(`Context` trait,Result/Option 都可);库函数里造错 `Error::action(..)`;动作失败 `err.is_unsupported()` 降级或按 `ActionErrorKind` 分类。
+- 查:`crates/nagisa-types/src/error.rs`(Error 变体 / ActionErrorKind / bail!)、`crates/nagisa-types/src/context.rs`。
+- 非显然:**绝不比对 retcode 数字**(三家协议端不一致,这正是 kind 分类存在的原因)。
+
+### 门控与冷却
+
+- 能力:`Rule` 代数 `& | !`(AND 左→右短路);场景规则(`to_me`/`group_only`/`private`/`in_group`/`from_user`/`keyword`)、权限(`superuser`/`group_admin`/`group_owner`)、全局闸(`switch(key)`/`awake`/`awake_silent`)、包装(`replying`:否决时回贴)、自定义 `Rule::new(Check)`;声明式冷却(`cooldown = 秒` 或 `Cooldown` 构建体:四种作用域/滑动窗口 `max_exec`/`bypass`)+ 命令式 `Cd` 提取器(`gate`/`ready`/`stamp`)+ `RateLimit` 全局限流中间件。
+- 查:`crates/nagisa-core/src/rule.rs`(内置规则全在此)、`cooldown.rs`(作用域语义、为何默认 UserGlobal)、`ratelimit.rs`。
+- 非显然:**`group_admin()` 私聊恒 false(fail-closed)**,惯用 `group_admin() | superuser()`;**`cooldown` 默认 UserGlobal——该用户跨所有命令共享一个桶**,按命令限频要 `.per_trigger()`;冷却恒在门控链最右,被左侧规则拒掉不消耗;`superuser()` 名单来自 `App::superusers`,也以 `State<Superusers>` 暴露(取内层要先解引用 `(*sus).0`)。
+
+### 多轮会话
+
+- 能力:`Session`(提取器)→ `Waiter`(作用域可组合/嵌套深者优先/block 吞放可选);`recv::<T>` 类型化等待、`recv_with(_sync)` 逐事件裁决、`confirm` 是否确认、`recv_text` / `recv_parse` 自由文本带追问;`single_flight(_user)` 防重入(RAII);`Rendezvous<K,V>` 跨两条独立事件的留取存储(TTL/可持久化)。
+- 查:`crates/nagisa-core/src/session.rs`(模块文档讲三层分发与嵌套;`confirm`/`recv_parse` 等高层封装都在此)、`rendezvous.rs`(与 Waiter 的分工在模块文档第一段)。
+- 非显然:**`confirm` 第二参是限定谁(`Uin`),没有提示文案形参**;Waiter 是挂起的控制流,**进程重启即丢**;跨会话/跨很久的两条事件(群里发 token、私聊来绑)用 `Rendezvous` 不用 Waiter;`Rendezvous` 的过期残留要显式 `sweep()`;`Waiter` 是具名类型,长流程可拆子函数传 `&Waiter`;`Duration` 来自 `std::time`(prelude 不带)。
+
+### 运行期开关与内省
+
+- 能力:`EnabledSet`(插件/触发器两级开关,全局与按会话两层覆盖,快照 `EnabledOverrides` 可序列化)、`KillSwitch` 急停、`SleepState` 休眠、`registered_plugins()` / `registered_triggers()` 内省(help 菜单与统计的原料,`PluginMeta` / `TriggerMeta` 字段)。三者均 App 自动注入,`State<_>` 直取。
+- 查:`crates/nagisa-core/src/enabled.rs`(判定层级与 on_change 语义)、`plugin.rs`(元数据字段与 `SwitchKey`)、`registry.rs`;开关管理命令 + 持久化挂点的样板见 `crates/nagisa/examples/plugin_switches.rs`;help 菜单由 `registered_plugins()` 按 `category` 分组生成。
+- 非显然:触发器键是 `"<plugin_key>.<id>"` 点分形;插件总闸 OFF 压平其下全部触发器,`can_disable=false` 恒开;**`reset` 刻意不触发 `on_change`**;`maintain` 只是元数据标记,框架不强制;开关管理命令自身要 `can_disable = false` 防锁死;数「命令数」要按 `TriggerKind::Command` 过滤(内省也含事件型)。
+
+### 后台服务、中间件与扩展点
+
+- 能力:`Service`(id/deps 拓扑序 prepare → run → 逆序 cleanup;定时任务 = run 里 interval + select shutdown)、`Middleware` 洋葱层(`Flow::Stop` 吞事件)+ `RateLimit`;`nagisa::inventory`(与 `#[command]` 同源的自注册机制)可搭自己的扩展点——`collect!` 声明槽、`submit!` 各插件登记、`iter` 统一收集。
+- 查:`crates/nagisa-core/src/service.rs`、`middleware.rs`、`registry.rs`(inventory 与 **DCE 注意事项**);自搭扩展点的模式 = `collect!` 声明槽 + 各插件 `submit!` 登记 + `iter` 统一收集(典型用途:插件自带建表迁移、个人面板贡献槽)。
+- 非显然:**Supervisor 不做崩溃重启**——服务 `Err`/panic 触发整体收束;`ServiceBus` 是 TypeId 小袋子,拿不到 `Bot`;`submit!` 写在模块顶层而非函数内。
+
+### App、传输与日志
+
+- 能力:`App` 链式装配(`data` 共享态 / `superusers` / `layer` / `service` / `debug` 开发模式 / `on_switch_change` + `restore_switches` 开关持久化闭环 / 七个 `*_handle()` 内省句柄 / `run_onebot` / `run_milky`);OneBot 5 种传输(正向 WS / 反向 WS / HTTP / 纯 API / LLOneBot SSE 与长轮询);Milky WS / SSE / WebHook;feature "log":`nagisa::log::init` 统一记录器 + `EventLog` 顶层可读事件日志(中文渲染/名称缓存/撤回预览)。
+- 查:`crates/nagisa/src/app.rs`、`crates/nagisa/src/lib.rs`(**prelude 全名单在此——能 `use` 到什么以它为准,import 解析失败先查它**)、`crates/nagisa-onebot/src/adapter/config.rs`、`crates/nagisa-milky/src/config.rs`、`crates/nagisa-log/src/`(`init` 的 `LogConfig` 与 `EventLog` 接线即日志样板)。
+- 非显然:启动逻辑写 `#[event(Ready)]`(每次 run 恰一次,重连不重放);`Matcher` 在 crate 根(`nagisa::Matcher`)不在 prelude;`nagisa::log::init` 返回元组 `(LogGuard, Option<LogBus>)`,guard 须持有到进程退出。
+
+### 示例(可运行的真实用法)
+
+`crates/nagisa/examples/`:`echo_bot.rs`(入门全家福:命令/Args/State/ArgEnum)、`word_guess.rs`(多轮会话/凑人对局)、`token_bind.rs`(Rendezvous 留取)、`plugin_switches.rs`(开关管理命令 + 持久化挂点)、`event_plugin.rs`(事件处理)。
+
+## 坑清单(WRONG → RIGHT)
+
+入选标准:**编译全绿、行为却错**,或报错严重误导——即编译器救不了你的地方。能被编译器清晰打回的错(幻觉方法名、类型不符、宏的显式拒绝)不收录,写错了看报错即可。
+
+1. **插件 crate 被 DCE,命令静默消失**:插件在独立 lib crate,bin 只在 Cargo.toml 依赖、代码从未 use → 链接器把 inventory 注册项连同整个编译单元剔除,无任何报错。RIGHT:单 crate 用 `mod plugins;` 即可;跨 crate 在 bin 里 `#[allow(unused_imports)] use my_plugins::*;` 或调一次插件 crate 暴露的 `force_link()`。
+2. `gate = group_admin()` 的管理命令 → 私聊里恒 false(fail-closed),命令静默失灵。RIGHT:`gate = group_admin() | superuser()`。
+3. 不配 `usage =`,以为框架会回「参数错误」 → prod 静默跳过,用户毫无反馈。RIGHT:配 `usage = ".."`;开发期再加 `App::debug()`。
+4. `cooldown = 60` 以为按命令分桶 → 默认 UserGlobal,**该用户在所有命令上共享一个桶**,别的命令也被锁。RIGHT:按命令限频用 `Cooldown::new(60).per_trigger()`。
+5. handler `return Err(..)` 以为用户能看到错误 → 只记 warn 日志,不回贴。RIGHT:先 `reply.text("失败原因").await?` 再返回。
+6. `#[arg(at)]` 期望文本「@123456」也命中 → 它只认真正的 @ 消息段,纯文本时命令整个不触发。RIGHT:`#[arg(at_or_id)] target: Uin`。
+7. 用 `#[event(Message)]` 做全量记录/计数,但游戏(waiter)进行中收不到消息 → 被 block 吞了。RIGHT:加 `top`:`#[event(Message, top)]`。
+8. handler 里跨 `.await` 持有 `rand::rng()`(ThreadRng)→ future 非 `Send`,报错指向 spawn 点而非病根,极难排查。RIGHT:任何 `.await` 之前把随机数取样成纯值,让 rng 先 drop。
+
+---
+
+签名以源码为准;本文与源码冲突时,信源码并修订本文。

@@ -1,0 +1,13 @@
+[package]
+name = "nagisa-types"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Nagisa unified chat-bot domain model (protocol-agnostic types)"
+
+[dependencies]
+bytes = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

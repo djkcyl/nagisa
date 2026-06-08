@@ -1,0 +1,31 @@
+[package]
+name = "nagisa"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/djkcyl/nagisa"
+documentation = "https://docs.rs/nagisa"
+readme = "../../README.md"
+description = "Rust 的 QQ 机器人框架,支持 OneBot v11 和 Milky"
+keywords = ["qq", "chatbot", "onebot", "milky", "bot"]
+categories = ["api-bindings", "asynchronous", "network-programming"]
+
+[dependencies]
+nagisa-core = { workspace = true }
+nagisa-log = { workspace = true, optional = true }
+nagisa-macros = { workspace = true }
+nagisa-milky = { workspace = true, optional = true }
+nagisa-onebot = { workspace = true, optional = true }
+nagisa-types = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal"] }
+tracing.workspace = true
+
+[features]
+default = ["onebot", "milky"]
+onebot = ["dep:nagisa-onebot"]
+milky = ["dep:nagisa-milky"]
+# Opt-in logging facade: `nagisa::log::*` (readable event render + EventLog observer +
+# unified recorder init() + log-as-event LogBus). Off by default — a bot author enables
+# it with `nagisa = { features = ["log"] }` so they depend only on `nagisa`.
+log = ["dep:nagisa-log"]

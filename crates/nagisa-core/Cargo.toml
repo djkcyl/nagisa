@@ -1,0 +1,20 @@
+[package]
+name = "nagisa-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Nagisa framework core: Bot, EventSource/ActionInvoker traits, dispatch engine"
+
+[dependencies]
+async-trait = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+inventory = { workspace = true }
+nagisa-types = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }

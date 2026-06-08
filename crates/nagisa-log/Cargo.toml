@@ -1,0 +1,20 @@
+[package]
+name = "nagisa-log"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Nagisa logging: readable event rendering, opt-in event observer, unified recorder + log bus"
+
+[dependencies]
+# 行格式器的本地时区时间戳(默认格式器只会打 UTC ISO 长串,与机器本地时间差着时区)。
+chrono = { workspace = true }
+nagisa-core.workspace = true
+nagisa-types = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt"] }
+# 商城表情原名解析:拉 QQ 的 gtimg 表情包列表 JSON(与 nagisa-onebot 同款 TLS,不拉两套)。
+reqwest = { workspace = true, features = ["json", "rustls"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "registry", "ansi", "json"] }

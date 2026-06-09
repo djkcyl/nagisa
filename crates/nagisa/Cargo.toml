@@ -17,6 +17,7 @@ nagisa-log = { workspace = true, optional = true }
 nagisa-macros = { workspace = true }
 nagisa-milky = { workspace = true, optional = true }
 nagisa-onebot = { workspace = true, optional = true }
+nagisa-render = { workspace = true, optional = true }
 nagisa-types = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal"] }
 tracing.workspace = true
@@ -29,3 +30,5 @@ milky = ["dep:nagisa-milky"]
 # unified recorder init() + log-as-event LogBus). Off by default — a bot author enables
 # it with `nagisa = { features = ["log"] }` so they depend only on `nagisa`.
 log = ["dep:nagisa-log"]
+# Opt-in 排版引擎门面:`nagisa::render::*`(标记/构建器文档 → 图片字节)。默认不开。
+render = ["dep:nagisa-render"]

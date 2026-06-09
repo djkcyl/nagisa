@@ -33,7 +33,8 @@
 //!   `Segment` / `Message` / `Peer` / `Uin` / `Result` / `Error`,以及门控/规则
 //!   组合子。
 //! - 协议适配器(`OneBotConfig` / `MilkyConfig`)挂在 `onebot` / `milky` feature
-//!   后面,日志工具箱(`nagisa::log`)挂在 `log` feature 后面。
+//!   后面,日志工具箱(`nagisa::log`)挂在 `log` feature 后面,排版引擎
+//!   (`nagisa::render` —— 文档排版成图片)挂在 `render` feature 后面。
 //! - 提供 [`App`] 构建器([`app`]),把适配器、分发循环、自动登记的 handler 和一个
 //!   [`ShutdownToken`] 接到一起。
 //!
@@ -360,6 +361,12 @@ pub use nagisa_milky::{MilkyAdapter, MilkyConfig, MilkyMode};
 ///   与消息 Event/handler 路径分开(防自激)。
 #[cfg(feature = "log")]
 pub use nagisa_log as log;
+
+/// 可选排版引擎(`use nagisa::render::*;`),挂在 `render` feature 后面,好让 bot 作者只
+/// 依赖 `nagisa`。转出 [`nagisa_render`]:把标记文本 / 构建器文档排版成图片字节(PNG / WebP),
+/// 再经既有的 `Segment::image_bytes` 出图。
+#[cfg(feature = "render")]
+pub use nagisa_render as render;
 
 /// bot 作者唯一需要的一行 glob 导入:`use nagisa::prelude::*;`。
 ///

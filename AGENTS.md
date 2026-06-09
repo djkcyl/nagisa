@@ -4,7 +4,7 @@
 
 ## 仓库形态
 
-- Rust workspace,7 crates:`nagisa-types`(跨协议通用的域模型)/ `nagisa-core`(运行时引擎 + 适配器共享基建)/ `nagisa-onebot`(OneBot v11 适配器,6 种传输)/ `nagisa-milky`(Milky 适配器)/ `nagisa-macros`(7 个宏入口)/ `nagisa-log`(可选日志,feature "log")/ `nagisa`(门面,**唯一对外入口**)。
+- Rust workspace,8 crates:`nagisa-types`(跨协议通用的域模型)/ `nagisa-core`(运行时引擎 + 适配器共享基建)/ `nagisa-onebot`(OneBot v11 适配器,6 种传输)/ `nagisa-milky`(Milky 适配器)/ `nagisa-macros`(7 个宏入口)/ `nagisa-log`(可选日志,feature "log")/ `nagisa-render`(可选排版引擎:文档 → 图片,feature "render",与协议解耦)/ `nagisa`(门面,**唯一对外入口**)。
 - 提交:正常按改动分次提交,写清楚 commit message。
 
 ## 门禁(改完必须全跑、真跑、看真实输出)

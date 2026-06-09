@@ -7,7 +7,7 @@ members = [
     "crates/nagisa-milky",
     "crates/nagisa-macros",
     "crates/nagisa-log",
-    "crates/nagisa",
+    "crates/nagisa", "crates/nagisa-render",
 ]
 
 [workspace.package]
@@ -50,3 +50,4 @@ syn = "2.0.117"
 inventory = "0.3.24"
 nagisa-milky = { version = "0.2.0", path = "crates/nagisa-milky" }
 nagisa-onebot = { version = "0.2.0", path = "crates/nagisa-onebot" }
+nagisa-render = { version = "0.2.0", path = "crates/nagisa-render" }

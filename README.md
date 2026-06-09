@@ -275,8 +275,11 @@ OneBot 动作走同连接 echo 关联（WS），或把动作名接在 `api_url` 
 | `onebot` | 是 | OneBot v11 适配器 |
 | `milky` | 是 | Milky 适配器 |
 | `log` | 否 | 日志门面 `nagisa::log::*` |
+| `render` | 否 | 排版引擎 `nagisa::render::*`（文档 → 图片） |
 
 `log` feature 提供：`init()` 统一初始化（控制台 + 可选文件，返回的 `LogGuard` 须持有到退出；`RUST_LOG` 优先于配置）、`EventLog` 观察者（把事件渲染成可读日志行，含出站消息回显、名称缓存、撤回预览）、`LogBus`（log-as-event 广播）。
+
+`render` feature 提供：`nagisa::render` 把标记文本（类 Markdown + 扩展）或 Rust 构建器（`Doc`）的文档排版成图片字节——标题 / 段落 / 富文本样式 / 链接 / 列表（含任务列表）/ 引用 / 代码 / 图片 / 多栏 / 表格、CJK+拉丁+emoji 混排、亮暗主题、内置字体（黑体 + 等宽，细 / 常规 / 粗真字重，压缩内嵌；衬线 / 楷体角色自备字体即生效）；与协议解耦，出图后经 `reply.image_bytes(..)` 发出。详见 crate rustdoc。
 
 ## Workspace crate 地图
 
@@ -288,6 +291,7 @@ graph TD
     FAC -. feature onebot .-> OB["nagisa-onebot"]
     FAC -. feature milky .-> MK["nagisa-milky"]
     FAC -. feature log .-> LOG["nagisa-log"]
+    FAC -. feature render .-> RND["nagisa-render · 排版引擎<br/>文档 → 图片(与协议解耦)"]
     CORE --> TY["nagisa-types · 域模型"]
     OB --> CORE
     MK --> CORE
@@ -312,6 +316,7 @@ graph TD
 │ nagisa-macros  #[command] / #[event] / plugin! / derive(Args/…)    │
 │ nagisa-types   统一域模型（纯数据，无 async）                       │
 │ nagisa-log     事件日志 + 名称缓存（feature "log"）                 │
+│ nagisa-render  排版引擎：文档 → 图片（feature "render"，与协议解耦） │
 ├───────────────────────────┬──────────────────────────────────────┤
 │ nagisa-onebot（OneBot v11）  │  nagisa-milky（Milky）                 │
 │ 6 种传输                   │  WS / SSE / WebHook                  │

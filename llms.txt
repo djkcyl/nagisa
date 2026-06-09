@@ -19,7 +19,7 @@ Cargo.toml:
 # nagisa 未发布 crates.io,用 path 依赖(按实际相对路径调整)
 nagisa = { path = "../nagisa/crates/nagisa", default-features = false, features = ["onebot"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-# features:onebot / milky / log(默认 = ["onebot", "milky"])。
+# features:onebot / milky / log / render(默认 = ["onebot", "milky"];log / render 按需开)。
 # 不需要 async-trait / inventory / anyhow——前两者经 nagisa 门面转出,错误口径自带。
 # 也不要直接依赖 nagisa-core / nagisa-types:能编译过,但 bot 只应依赖 nagisa 门面这一个口。
 ```
@@ -121,6 +121,12 @@ async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
 - 能力:`reply.text(..)` 单段快捷 / `reply.msg()...send()` 链式混排 / `Msg::new()...build()` 脱离 Reply 拼 `Message` / `bot.send(&peer, &segs)` 发任意会话;合并转发(含嵌套、卡片标题);引用、@、图片三态(url/bytes/path)、表情。
 - 查:`Reply` / `ReplyMsg` 在 `crates/nagisa-core/src/extract.rs`;`Msg` 与 `MessageExt`(收到的消息上的查询)在 `crates/nagisa-types/src/message.rs`;`Segment` 构造器与 `Forward` / `ForwardNode` 在 `crates/nagisa-types/src/segment.rs`。
 - 非显然:**没有 send_forward 方法**——合并转发就是普通段 `Segment::forward(nodes)`;Milky 端解码 `ForwardNode.user` 恒为 `Uin(0)`(以 name 为准);所有发送返回 `MessageId` 可存供撤回/引用;链式 builder 是值语义,条件追加段用 `msg = msg.text(..)` 重新绑定。
+
+### 出图 / 排版(可选,feature "render")
+
+- 能力:`nagisa::render` 把标记文本(类 Markdown + 扩展)或 Rust 构建器(`Doc`)的文档排版成图片字节——标题/段落/粗斜下删·色·高亮·字号·字族/链接(取文字按强调色)/列表(含任务列表 □/✓)/引用/代码(语言标签在盒角)/分割线/图片/多栏/表格(自适应列宽·限宽·按列行格上色·紧凑度与网格可调)、左中右两端对齐、CJK+拉丁+emoji 混排、亮暗主题、内置字体(黑体+等宽,细/常规/粗真字重,zstd 压缩内嵌、首用解压);衬线/楷体角色不随包内置——FontHandle::builder().data(bytes)(裸字节或 zstd 皆可)/.dir()/系统字体提供,默认字族名 Noto Serif SC / LXGW WenKai GB,缺则回退黑体;楷体字重夹 300–500。
+- 查:`crates/nagisa-render/src/lib.rs`(crate rustdoc 即用法指南与配置)、`model.rs`(文档模型)、`build.rs`(构建器)、`markup.rs`(标记语法);入口 `render_markup` / `render_document`,配置 `RenderOptions`(`OutputFormat::Png/PngFast/Webp/WebpOrPng`——Webp 超 16383px 报错、WebpOrPng 超限自动落 PNG;`scale` 预设 `.fast/.sharp/...`、`Theme`、`FontHandle`)。
+- 非显然:与协议解耦——产物是图片字节,自己包 `reply.image_bytes(png).send()` 发出;文字图选 `.webp()` 最小最快(JPEG 对锐利文字反而又慢又大,已不提供);`scale`(默认 2×)是体积 / 速度总闸。
 
 ### 域模型(拆解收到的消息/事件)
 

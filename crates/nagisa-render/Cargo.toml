@@ -5,7 +5,7 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "nagisa 的文本排版引擎:标记/构建器文档 → 图片"
+description = "Nagisa typesetting engine: markup / builder documents to images (PNG / WebP)"
 
 [dependencies]
 cosmic-text = { workspace = true }

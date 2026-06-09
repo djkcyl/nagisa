@@ -17,9 +17,6 @@ pub struct PluginMeta {
     pub category: Category,
     pub version: &'static str,
     pub description: &'static str,
-    /// 给 help/菜单的详细用法（合并转发帮助卡里该插件那一节）。比 `description` 长：怎么用。
-    /// 空串 ⇒ 无。
-    pub usage: &'static str,
     /// 总开关是否可被关掉。`false` ⇒ 门控把每个触发器都视为豁免（恒开）——给「永不下线」
     /// 的核心插件用。
     pub can_disable: bool,
@@ -43,7 +40,6 @@ impl PluginMeta {
         category: Category::User,
         version: "",
         description: "",
-        usage: "",
         can_disable: true,
         default_enable: true,
         hidden: false,

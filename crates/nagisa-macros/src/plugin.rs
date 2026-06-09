@@ -23,7 +23,6 @@ pub(crate) struct PluginArgs {
     category: Option<Ident>,
     version: Option<LitStr>,
     description: Option<LitStr>,
-    usage: Option<LitStr>,
     can_disable: Option<LitBool>,
     default_enable: Option<LitBool>,
     hidden: Option<LitBool>,
@@ -38,7 +37,6 @@ impl Parse for PluginArgs {
             category: None,
             version: None,
             description: None,
-            usage: None,
             can_disable: None,
             default_enable: None,
             hidden: None,
@@ -53,7 +51,6 @@ impl Parse for PluginArgs {
                 "category" => out.category = Some(entry.value.expect_ident(&entry.key)?),
                 "version" => out.version = Some(entry.value.expect_str(&entry.key)?),
                 "description" => out.description = Some(entry.value.expect_str(&entry.key)?),
-                "usage" => out.usage = Some(entry.value.expect_str(&entry.key)?),
                 "can_disable" => out.can_disable = Some(entry.value.expect_bool(&entry.key)?),
                 "default_enable" => out.default_enable = Some(entry.value.expect_bool(&entry.key)?),
                 "hidden" => out.hidden = Some(entry.value.expect_bool(&entry.key)?),
@@ -147,10 +144,6 @@ pub(crate) fn expand_plugin(args: PluginArgs) -> proc_macro2::TokenStream {
         Some(s) => quote! { #s },
         None => quote! { #nc::plugin::PluginMeta::DEFAULT.description },
     };
-    let usage = match args.usage {
-        Some(s) => quote! { #s },
-        None => quote! { #nc::plugin::PluginMeta::DEFAULT.usage },
-    };
     let can_disable = match args.can_disable {
         Some(b) => quote! { #b },
         None => quote! { #nc::plugin::PluginMeta::DEFAULT.can_disable },
@@ -177,7 +170,6 @@ pub(crate) fn expand_plugin(args: PluginArgs) -> proc_macro2::TokenStream {
                     category: #category,
                     version: #version,
                     description: #description,
-                    usage: #usage,
                     can_disable: #can_disable,
                     default_enable: #default_enable,
                     hidden: #hidden,

@@ -51,8 +51,7 @@ use nagisa::prelude::*;
 plugin! {
     name = "签到",
     key = "sign",
-    description = "每日签到",        // 帮助菜单直接展示给用户的文案
-    usage = "签到 / 转账 @某人 金额",
+    description = "每日签到",        // 帮助菜单直接展示给用户的文案（命令用法见 #[command] / #[arg]）
     category = User,                 // Core | User | Tool | Fun | Push | Admin
 }
 

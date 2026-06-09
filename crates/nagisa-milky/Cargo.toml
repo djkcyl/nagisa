@@ -8,7 +8,7 @@ description = "Nagisa Milky 1.2 protocol adapter (targets Lagrange.Milky / LLOne
 
 [dependencies]
 async-trait = { workspace = true }
-axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+axum = { workspace = true, features = ["http1", "json", "tokio"] }
 futures-util = { workspace = true }
 nagisa-core = { workspace = true }
 nagisa-types = { workspace = true }

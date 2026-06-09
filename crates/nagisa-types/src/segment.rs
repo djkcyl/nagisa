@@ -358,8 +358,8 @@ impl ForwardNode {
         nodes
     }
 
-    /// 把一大段多行文本按**行**切成 ≤ `max_chars` 字的若干文本节点（[`chunk_items`] 的便捷形：
-    /// 条目 = 行、分隔 = 换行）。行本身不会被切开；但逻辑条目跨多行时，请直接用 [`chunk_items`]
+    /// 把一大段多行文本按**行**切成 ≤ `max_chars` 字的若干文本节点（[`Self::chunk_items`] 的便捷形：
+    /// 条目 = 行、分隔 = 换行）。行本身不会被切开；但逻辑条目跨多行时，请直接用 [`Self::chunk_items`]
     /// 按条目切，以免一个条目被拆到两个节点。文本为空 ⇒ 空 `Vec`。
     pub fn chunk_text(
         user: impl Into<Uin>,

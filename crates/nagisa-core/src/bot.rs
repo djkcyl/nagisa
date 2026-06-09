@@ -5,28 +5,45 @@ use nagisa_types::event::ReactionKind;
 use nagisa_types::prelude::*;
 use serde_json::Value;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
-/// 「出站消息」日志器:由 nagisa-log 安装。拿到 `(peer, 段, self_id, 已发出的 MessageId)`,nagisa-log
-/// 据此合成一条 `is_self` 的 `MessageEvent`,**走与入站完全相同的**记录/渲染管线(同一 `render_line`、
-/// 同一 `NameStore`、同一最近消息缓存、同一开关/级别)。**未装**时 `Bot::send` 退回 debug 记一行
-/// (仅 peer + 段数)。进程级、只装一次。
+/// 「出站消息」日志器:拿到 `(peer, 段, self_id, 已发出的 MessageId)`。nagisa-log 装一个据此合成
+/// 一条 `is_self` 的 `MessageEvent`、走与入站完全相同的记录/渲染管线(同一 `render_line`、同一
+/// `NameStore`、同一最近消息缓存、同一开关/级别);业务侧也可再装(如把出站消息落库)。
+///
+/// 多订阅:每个 `Bot::send` 成功后,按注册顺序挨个调用全部日志器。一个都没装时退回 debug 记一行
+/// (仅 peer + 段数)。日志器都在启动时注册,运行期只读遍历。
 type OutgoingLogger = Box<dyn Fn(&Peer, &[Segment], Uin, &MessageId) + Send + Sync>;
-static OUTGOING_LOGGER: OnceLock<OutgoingLogger> = OnceLock::new();
+static OUTGOING_LOGGERS: OnceLock<Mutex<Vec<OutgoingLogger>>> = OnceLock::new();
 
-/// 安装出站消息日志器(nagisa-log 用)。重复安装无效(保留首个)——此时**告警**而非静默丢弃:
-/// 第二个观察者的出站日志会一直绑在首个观察者的名字库/开关上,悄悄吞掉这一事实只会害人排障。
-pub fn set_outgoing_logger(f: OutgoingLogger) {
-    if OUTGOING_LOGGER.set(f).is_err() {
-        tracing::warn!("outgoing logger already installed; keeping the first (该进程内重复安装被忽略)");
+fn loggers() -> &'static Mutex<Vec<OutgoingLogger>> {
+    OUTGOING_LOGGERS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// 追加一个出站消息日志器。多次调用按顺序累积(多订阅:nagisa-log、业务落库可并存)。
+pub fn add_outgoing_logger(f: OutgoingLogger) {
+    if let Ok(mut v) = loggers().lock() {
+        v.push(f);
     }
 }
 
-/// 记一条**已成功发出**的出站消息:装了日志器就走它,否则 debug 兜底(旧行为)。
+/// [`add_outgoing_logger`] 的同义入口(历史名,nagisa-log 在用)。同样是追加,不再独占。
+pub fn set_outgoing_logger(f: OutgoingLogger) {
+    add_outgoing_logger(f);
+}
+
+/// 记一条**已成功发出**的出站消息:有日志器就逐个调用,一个都没装时 debug 兜底(旧行为)。
 fn log_outgoing(peer: &Peer, message: &[Segment], self_id: Uin, id: &MessageId) {
-    match OUTGOING_LOGGER.get() {
-        Some(log) => log(peer, message, self_id, id),
-        None => tracing::debug!(peer = ?peer, segments = message.len(), "发送消息"),
+    let guard = match loggers().lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+    if guard.is_empty() {
+        tracing::debug!(peer = ?peer, segments = message.len(), "发送消息");
+        return;
+    }
+    for log in guard.iter() {
+        log(peer, message, self_id, id);
     }
 }
 

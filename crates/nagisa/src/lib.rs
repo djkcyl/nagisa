@@ -61,11 +61,17 @@ pub use nagisa_core::{
     // `Bot` 句柄。它的固有方法就是业务调用的动作面;支撑这些方法、由适配器实现的 trait
     // 在 [`adapter`]。
     Bot,
+    // 出站消息日志器:每条 bot 发出的消息都会喂给已注册的日志器(多订阅)。
+    add_outgoing_logger,
     // 带类型的命令参数解析(Args<T> 类型;#[derive(Args)] 是宏)。
     ArgError,
     ArgToken,
     Args,
     ArgText,
+    // 参数元数据(#[derive(Args)] 生成,供 help 自动生成用法)。
+    ArgKind,
+    ArgSpec,
+    ArgsMeta,
     FromArg,
     ParseArgs,
     Captures,
@@ -382,7 +388,8 @@ pub mod prelude {
 
     // 自定义参数解析:`ParseArgs` trait 及其 token/error 类型,加上字段类型 trait
     // `FromArg` —— 给手写 `Args<T>` impl(而非 `#[derive(Args)]`)的 handler 用。
-    pub use crate::{ArgError, ArgToken, FromArg, ParseArgs};
+    // `ArgSpec`/`ArgKind`/`ArgsMeta`:参数元数据,help 据此自动生成用法。
+    pub use crate::{ArgError, ArgKind, ArgSpec, ArgsMeta, ArgToken, FromArg, ParseArgs};
 
     // 带类型的具名槽 matcher(HEAD 侧,与 Args<T> 对称):`Tail` 通配载荷,以及手写头部用的
     // `FromSlots`/`SlotValue` trait。(`Slots<T>` 本身随上面 `#[derive(Slots)]` 宏一起带入 ——

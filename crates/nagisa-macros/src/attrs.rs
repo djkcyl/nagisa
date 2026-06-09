@@ -61,6 +61,8 @@ pub(crate) struct MetaArgs {
     pub(crate) cooldown: Option<Expr>,
     /// `usage = "<str>"`：parse-miss 时经共享 `on_parse_miss` 回贴的用法串。
     pub(crate) usage: Option<String>,
+    /// `order = <int>`：help 里同插件命令的展示次序（小在前），缺省 0、并列保持注册序。
+    pub(crate) order: Option<i32>,
 }
 
 impl MetaArgs {
@@ -76,6 +78,7 @@ impl MetaArgs {
             gate: None,
             cooldown: None,
             usage: None,
+            order: None,
         }
     }
 }
@@ -123,6 +126,10 @@ fn apply_common_meta(meta: &mut MetaArgs, m: &Meta) -> syn::Result<bool> {
             }
             "hidden" => {
                 meta.hidden = Some(value.as_bool(id)?);
+                Ok(true)
+            }
+            "order" => {
+                meta.order = Some(value.as_i32(id)?);
                 Ok(true)
             }
             _ => Ok(false),

@@ -314,4 +314,61 @@ impl ForwardNode {
         self.time = Some(t);
         self
     }
+
+    /// 把一组「逻辑条目」打包成每节点 ≤ `max_chars` 字的若干纯文本转发节点 —— **按条目切，绝不拆条目**。
+    ///
+    /// 节点内条目以 `sep` 连接；累计字数（含 `sep`）超过上限就另起一节点，但一个条目永远完整落在
+    /// 某一个节点里（条目自身就超限时它独占一节点，也不切开）。字数按 Unicode 字符计，`name` 每节点重复。
+    /// 适合「N 条漂流瓶 / N 条记录 / N 条命令」这类列表：按条目而非按字断开。条目为空 ⇒ 空 `Vec`。
+    pub fn chunk_items<I, S>(
+        user: impl Into<Uin>,
+        name: impl Into<String>,
+        items: I,
+        sep: &str,
+        max_chars: usize,
+    ) -> Vec<ForwardNode>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let user = user.into();
+        let name = name.into();
+        let sep_len = sep.chars().count();
+        let mut nodes = Vec::new();
+        let mut buf = String::new();
+        let mut len = 0usize;
+        for item in items {
+            let item: String = item.into();
+            let il = item.chars().count();
+            // 装不下就先把当前节点收口，再放这个条目（条目本身整块进新节点，不切开）。
+            if !buf.is_empty() && len + sep_len + il > max_chars {
+                nodes.push(ForwardNode::text(user, name.clone(), std::mem::take(&mut buf)));
+                len = 0;
+            }
+            if !buf.is_empty() {
+                buf.push_str(sep);
+                len += sep_len;
+            }
+            buf.push_str(&item);
+            len += il;
+        }
+        if !buf.is_empty() {
+            nodes.push(ForwardNode::text(user, name, buf));
+        }
+        nodes
+    }
+
+    /// 把一大段多行文本按**行**切成 ≤ `max_chars` 字的若干文本节点（[`chunk_items`] 的便捷形：
+    /// 条目 = 行、分隔 = 换行）。行本身不会被切开；但逻辑条目跨多行时，请直接用 [`chunk_items`]
+    /// 按条目切，以免一个条目被拆到两个节点。文本为空 ⇒ 空 `Vec`。
+    pub fn chunk_text(
+        user: impl Into<Uin>,
+        name: impl Into<String>,
+        text: impl Into<String>,
+        max_chars: usize,
+    ) -> Vec<ForwardNode> {
+        let text = text.into();
+        let lines: Vec<&str> = text.lines().collect();
+        Self::chunk_items(user, name, lines, "\n", max_chars)
+    }
 }

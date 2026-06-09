@@ -64,6 +64,15 @@ pub struct TriggerMeta {
     pub plugin_key: &'static str,
     pub name: &'static str,
     pub description: &'static str,
+    /// 详细用法（help 命令详情里展开这条命令时显示）。比 `description` 长：怎么用。空串 ⇒ 无。
+    pub usage: &'static str,
+    /// 命令的字面调用词：首个为主命令词、其余为别名。正则/槽位匹配器与事件触发器为空切片。
+    pub words: &'static [&'static str],
+    /// 命令参数规格（`#[derive(Args)]` 经 `args: Args<T>` 形参带入），供 help 自动生成用法。
+    /// 无 `Args<T>` 形参的命令、以及事件触发器为空切片。
+    pub args: &'static [crate::args::ArgSpec],
+    /// help 里同插件命令的展示次序（`#[command(order = N)]`，小在前；缺省 0、并列保持注册序）。
+    pub order: i32,
     pub can_disable: bool,
     pub default_enable: bool,
     pub hidden: bool,

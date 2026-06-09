@@ -163,11 +163,11 @@ async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
 
 - 能力:`Service`(id/deps 拓扑序 prepare → run → 逆序 cleanup;定时任务 = run 里 interval + select shutdown)、`Middleware` 洋葱层(`Flow::Stop` 吞事件)+ `RateLimit`;`nagisa::inventory`(与 `#[command]` 同源的自注册机制)可搭自己的扩展点——`collect!` 声明槽、`submit!` 各插件登记、`iter` 统一收集。
 - 查:`crates/nagisa-core/src/service.rs`、`middleware.rs`、`registry.rs`(inventory 与 **DCE 注意事项**);自搭扩展点的模式 = `collect!` 声明槽 + 各插件 `submit!` 登记 + `iter` 统一收集(典型用途:插件自带建表迁移、个人面板贡献槽)。
-- 非显然:**Supervisor 不做崩溃重启**——服务 `Err`/panic 触发整体收束;`ServiceBus` 是 TypeId 小袋子,拿不到 `Bot`;`submit!` 写在模块顶层而非函数内。
+- 非显然:**Supervisor 不做崩溃重启**——必选服务 `Err`/panic 触发整体收束,**可选服务**(`Supervisor::add_optional` / `App::service_optional`)失败只记日志、不拖垮其余;`ServiceBus` 是 TypeId 小袋子,`run` 时会把 `Bot` 发布进去(服务可 `bus.get::<Bot>()`),别的句柄经 `App::service_data` 预置;`submit!` 写在模块顶层而非函数内。
 
 ### App、传输与日志
 
-- 能力:`App` 链式装配(`data` 共享态 / `superusers` / `layer` / `service` / `debug` 开发模式 / `on_switch_change` + `restore_switches` 开关持久化闭环 / 七个 `*_handle()` 内省句柄 / `run_onebot` / `run_milky`);OneBot 5 种传输(正向 WS / 反向 WS / HTTP / 纯 API / LLOneBot SSE 与长轮询);Milky WS / SSE / WebHook;feature "log":`nagisa::log::init` 统一记录器 + `EventLog` 顶层可读事件日志(中文渲染/名称缓存/撤回预览)。
+- 能力:`App` 链式装配(`data` 共享态 / `superusers` / `layer` / `service` / `service_optional`(可选服务)/ `service_data`(预置 service 句柄)/ `debug` 开发模式 / `on_switch_change` + `restore_switches` 开关持久化闭环 / 七个 `*_handle()` 内省句柄 / `run_onebot` / `run_milky`);OneBot 5 种传输(正向 WS / 反向 WS / HTTP / 纯 API / LLOneBot SSE 与长轮询);Milky WS / SSE / WebHook;feature "log":`nagisa::log::init` 统一记录器 + `EventLog` 顶层可读事件日志(中文渲染/名称缓存/撤回预览)。
 - 查:`crates/nagisa/src/app.rs`、`crates/nagisa/src/lib.rs`(**prelude 全名单在此——能 `use` 到什么以它为准,import 解析失败先查它**)、`crates/nagisa-onebot/src/adapter/config.rs`、`crates/nagisa-milky/src/config.rs`、`crates/nagisa-log/src/`(`init` 的 `LogConfig` 与 `EventLog` 接线即日志样板)。
 - 非显然:启动逻辑写 `#[event(Ready)]`(每次 run 恰一次,重连不重放);`Matcher` 在 crate 根(`nagisa::Matcher`)不在 prelude;`nagisa::log::init` 返回元组 `(LogGuard, Option<LogBus>)`,guard 须持有到进程退出。
 

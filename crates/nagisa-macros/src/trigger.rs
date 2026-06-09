@@ -13,10 +13,28 @@
 
 use proc_macro2::Span;
 use quote::{format_ident, quote};
-use syn::{Error, Expr, FnArg, ItemFn, LitStr};
+use syn::{Error, Expr, FnArg, GenericArgument, ItemFn, LitStr, PathArguments, Type};
 
 use crate::attrs::{CommandArgs, EventArgs, MatcherKind, MetaArgs};
 use crate::nagisa_core_root;
+
+/// 从 handler 形参里找 `args: Args<T>`（末段标识符为 `Args` 的单泛型路径）并取出内层 `T`。
+/// 命令用它把 `<T as ArgsMeta>::SPECS` 写进 `TriggerMeta.args`，供 help 自动生成用法；找不到为 `None`。
+fn find_args_inner(func: &ItemFn) -> Option<&Type> {
+    for input in &func.sig.inputs {
+        let FnArg::Typed(pt) = input else { continue };
+        let Type::Path(tp) = &*pt.ty else { continue };
+        let Some(seg) = tp.path.segments.last() else { continue };
+        if seg.ident != "Args" {
+            continue;
+        }
+        let PathArguments::AngleBracketed(ab) = &seg.arguments else { continue };
+        if let Some(GenericArgument::Type(t)) = ab.args.first() {
+            return Some(t);
+        }
+    }
+    None
+}
 
 /// 把 `gate=`/`cooldown=` 降级成传给 `trigger_command`/`event_named` 的 `gate` 参数那个
 /// `Option<Rule>` 表达式。两者都缺 ⇒ 字面 `None` token（未门控命令/事件零改动）；否则
@@ -80,6 +98,11 @@ struct TriggerVariant {
     register_call: proc_macro2::TokenStream,
     /// `TriggerSpec.meta.kind` 的值（`TriggerKind::Command` / `TriggerKind::Event(<path>)`）。
     trigger_kind: proc_macro2::TokenStream,
+    /// `TriggerMeta.words` 的值（命令的字面调用词数组 `&[..]`；事件/正则/槽位为 `&[]`）。
+    meta_words: proc_macro2::TokenStream,
+    /// `TriggerMeta.args` 的值（`<T as ArgsMeta>::SPECS`，命令的 `args: Args<T>` 形参带入；
+    /// 无该形参的命令、事件触发器为 `&[]`）。
+    meta_args: proc_macro2::TokenStream,
 }
 
 /// 两个属性宏（`#[command]`/`#[event]`）展开的共享骨架：前置校验已过、元数据缺省已算好后，
@@ -112,11 +135,15 @@ fn emit_trigger(
     let id_lit = LitStr::new(meta.id.as_deref().unwrap_or(&fn_name_str), Span::call_site());
     let name_lit = LitStr::new(meta.name.as_deref().unwrap_or(&fn_name_str), Span::call_site());
     let description_lit = LitStr::new(meta.description.as_deref().unwrap_or(""), Span::call_site());
+    // 详细用法：与挂到 matcher 的 parse-miss hint 同源，但这里另存进 TriggerMeta 供 help 展示。
+    let usage_lit = LitStr::new(meta.usage.as_deref().unwrap_or(""), Span::call_site());
     let can_disable = meta.can_disable.unwrap_or(true);
     let default_enable = meta.default_enable.unwrap_or(true);
     let hidden = meta.hidden.unwrap_or(false);
+    let order = meta.order.unwrap_or(0);
 
-    let TriggerVariant { register_prelude, register_call, trigger_kind } = variant;
+    let TriggerVariant { register_prelude, register_call, trigger_kind, meta_words, meta_args } =
+        variant;
 
     quote! {
         #func
@@ -153,6 +180,10 @@ fn emit_trigger(
                     plugin_key: "",
                     name: #name_lit,
                     description: #description_lit,
+                    usage: #usage_lit,
+                    words: #meta_words,
+                    args: #meta_args,
+                    order: #order,
                     can_disable: #can_disable,
                     default_enable: #default_enable,
                     hidden: #hidden,
@@ -198,6 +229,16 @@ pub(crate) fn expand(args: CommandArgs, func: ItemFn) -> syn::Result<proc_macro2
     let top = args.top;
     let meta = &args.meta;
 
+    // 字面命令词（首个为主词、其余别名）写进 TriggerMeta.words 供 help 展示。
+    // 正则/槽位匹配器无字面词 ⇒ 空切片。
+    let meta_words = match &args.kind {
+        MatcherKind::Union(alts) => {
+            let lits = alts.iter().map(|s| LitStr::new(s, Span::call_site()));
+            quote! { &[ #( #lits ),* ] }
+        }
+        _ => quote! { &[] },
+    };
+
     // `usage="…"` → 给 matcher 挂上显式用法串：命中后随事件携带,
     // parse-miss 时优先于 dev 自动 hint 回贴。无 usage 则不动 matcher。
     let usage_apply = match &meta.usage {
@@ -226,6 +267,12 @@ pub(crate) fn expand(args: CommandArgs, func: ItemFn) -> syn::Result<proc_macro2
                               #default_enable, #can_disable, #top, #priority, m, #gate_tokens, #fn_name)
         },
         trigger_kind: quote! { #nc::plugin::TriggerKind::Command },
+        meta_words,
+        // 有 `args: Args<T>` 形参就取 `<T as ArgsMeta>::SPECS`,供 help 自动生成用法;否则空。
+        meta_args: match find_args_inner(&func) {
+            Some(t) => quote! { <#t as #nc::ArgsMeta>::SPECS },
+            None => quote! { &[] },
+        },
     };
     Ok(emit_trigger(&nc, &func, meta, variant))
 }
@@ -260,6 +307,9 @@ pub(crate) fn expand_event(args: EventArgs, func: ItemFn) -> syn::Result<proc_ma
                           #default_enable, #can_disable, #top, #priority, #kind_path, #gate_tokens, #fn_name)
         },
         trigger_kind: quote! { #nc::plugin::TriggerKind::Event(#kind_path) },
+        // 事件触发器无字面命令词、无命令参数。
+        meta_words: quote! { &[] },
+        meta_args: quote! { &[] },
     };
     Ok(emit_trigger(&nc, &func, meta, variant))
 }

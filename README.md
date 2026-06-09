@@ -239,6 +239,7 @@ bot.actions().<vendor 专属方法>(..).await?; // 厂商/协议专属直达(One
 |---|---|
 | 注册 | `command(matcher, h)` / `on(h)` / `on_top(h)` 显式注册（与宏注册并存）；`command_with` / `on_with` 带门控变体 |
 | 状态 | `data(T)`（供 `State<T>` 取）、`superusers([..])` |
+| 服务 | `service(svc)` 必选服务（`prepare`/`run` 失败即中止 bot）；`service_optional(svc)` 可选服务（失败只记日志、不拖垮 bot，对应 `Supervisor::add_optional`）；`service_data::<T>(value)` 把共享句柄预置进服务的 `ServiceBus`；`run_with` 还会自动把 `Bot` 发布进 bus（服务 `bus.get::<Bot>()` 取） |
 | 行为 | `debug()`（parse-miss 回贴自动提示）、`layer(中间件)` |
 | 开关持久化 | `restore_switches(..)` 启动恢复、`on_switch_change(..)` 变更回调 |
 | 共享态句柄 | `enabled_handle` / `cooldown_store_handle` / `rendezvous_handle` / `kill_switch_handle` / `sleep_handle` …（在 `run_*` 前拿走,跨任务持有） |

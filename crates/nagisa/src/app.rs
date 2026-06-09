@@ -29,10 +29,8 @@
 //! `prepare`/`cleanup` 阶段也会按拓扑序在 run 阶段前后被执行 —— 所以这是个真正可组合的扩
 //! 展点。
 //!
-//! **局限**:这些额外服务彼此共享一个 [`ServiceBus`](crate::ServiceBus),但不能直接
-//! 发布/消费 `Bot` 句柄(`Bot` 由 `run_with` 在服务生命周期之外接好)。若某个服务需要
-//! `Bot`,在构建 `Supervisor` 前把它塞进 [`ServiceBus`](crate::ServiceBus),或在实现服务
-//! 时让它作为构造参数传入。
+//! `run_with` 在分发循环启动后、`Supervisor` 跑起来之前,会把 [`Bot`] 发布进
+//! [`ServiceBus`]:服务在 `prepare` / `run` 阶段可直接 `bus.get::<Bot>()` 拿到句柄。
 use nagisa_core::{
     collect_into, CooldownStore, EnabledOverrides, EnabledSet, FlightStore, Handler, KillSwitch,
     Matcher, Middleware, Rendezvous, Router, Rule, SleepState, Superusers, WaiterStore,
@@ -43,13 +41,17 @@ use std::sync::Arc;
 // 运行循环的接线(及其所需 import)仅在至少开启一个适配器 feature 时存在;否则就是死代码。
 #[cfg(any(feature = "onebot", feature = "milky"))]
 use {
-    nagisa_core::{run_dispatch, Bot, Service, ShutdownToken, Supervisor},
+    nagisa_core::{run_dispatch, Bot, Service, ServiceBus, ShutdownToken, Supervisor},
     nagisa_types::error::Result,
     nagisa_types::event::Event,
     std::time::Duration,
     tokio::sync::mpsc,
     tokio::task::JoinSet,
 };
+
+/// 预置进服务 `ServiceBus` 的「句柄注入器」:延迟到建 `Supervisor` 时调用一次。
+#[cfg(any(feature = "onebot", feature = "milky"))]
+type ServiceSeed = Box<dyn FnOnce(&ServiceBus) + Send>;
 
 /// 在事件 socket 起来期间,`get_login_info` 重试几次。
 #[cfg(any(feature = "onebot", feature = "milky"))]
@@ -92,6 +94,13 @@ pub struct App {
     /// cleanup),跑在与适配器、分发任务并列的 `JoinSet` 里。
     #[cfg(any(feature = "onebot", feature = "milky"))]
     services: Vec<Arc<dyn Service>>,
+    /// 与适配器 + 分发循环并行运行的额外**可选**服务(见 [`Supervisor::add_optional`]):
+    /// prepare/run 失败只记日志,不拖垮 bot 主体。
+    #[cfg(any(feature = "onebot", feature = "milky"))]
+    optional_services: Vec<Arc<dyn Service>>,
+    /// 建 `Supervisor` 时注入其 [`ServiceBus`] 的共享句柄(见 [`App::service_data`])。
+    #[cfg(any(feature = "onebot", feature = "milky"))]
+    service_seeds: Vec<ServiceSeed>,
 }
 
 impl Default for App {
@@ -176,6 +185,10 @@ impl App {
             sleep,
             #[cfg(any(feature = "onebot", feature = "milky"))]
             services: Vec::new(),
+            #[cfg(any(feature = "onebot", feature = "milky"))]
+            optional_services: Vec::new(),
+            #[cfg(any(feature = "onebot", feature = "milky"))]
+            service_seeds: Vec::new(),
         }
     }
 
@@ -340,11 +353,29 @@ impl App {
     /// 拓扑序在主运行循环开始前执行,`run` 任务在同一个 `JoinSet` 里并发执行,`cleanup` 阶段在
     /// 停机时按逆拓扑序调用。
     ///
-    /// **局限**:用户服务彼此共享一个 [`ServiceBus`](crate::ServiceBus),但不能经它拿到 [`Bot`]
-    /// 句柄(`Bot` 在服务生命周期之外接好)。若某个服务需要 `Bot`,把它作为构造参数传入。
+    /// 服务间共享一个 [`ServiceBus`];`run_with` 会在 `Supervisor` 跑起来之前把 [`Bot`]
+    /// 发布进去,因此服务在 `prepare`/`run` 阶段可直接 `bus.get::<Bot>()` 取到句柄。
     #[cfg(any(feature = "onebot", feature = "milky"))]
     pub fn service(mut self, svc: Arc<dyn Service>) -> Self {
         self.services.push(svc);
+        self
+    }
+
+    /// 加一个**可选**服务(见 [`Supervisor::add_optional`]):它的 `prepare`/`run` 失败只记
+    /// 日志,不拖垮 bot 主体。用于 web 后台这类附加能力——起不来不影响 bot 收发消息。
+    #[cfg(any(feature = "onebot", feature = "milky"))]
+    pub fn service_optional(mut self, svc: Arc<dyn Service>) -> Self {
+        self.optional_services.push(svc);
+        self
+    }
+
+    /// 预置一个共享句柄到服务 [`ServiceBus`]:让经 [`App::service`]/[`App::service_optional`]
+    /// 登记的服务在 `prepare` 阶段经 `bus.get::<T>()` 取到它(典型:把 [`App::data`] 注入给
+    /// handler 的同一个数据库连接也给服务用)。与 [`App::data`] 互补——`data` 进 handler 的
+    /// state,`service_data` 进服务的 bus;常见是同一个 `Arc` 句柄两边各注入一份。
+    #[cfg(any(feature = "onebot", feature = "milky"))]
+    pub fn service_data<T: Send + Sync + 'static>(mut self, value: T) -> Self {
+        self.service_seeds.push(Box::new(move |bus| bus.insert(value)));
         self
     }
 
@@ -410,6 +441,7 @@ impl App {
         {
             let router = Arc::clone(&router);
             let dispatch_shutdown = shutdown.clone();
+            let bot = bot.clone(); // dispatch 拿 clone;外层 bot 留给 service bus
             tasks.spawn(async move {
                 run_dispatch(router, bot, rx, dispatch_shutdown).await;
                 Ok(())
@@ -430,16 +462,21 @@ impl App {
         }
         drop(tx);
 
-        // —— 4. 经 Supervisor 运行用户服务(若有)。 ——
-        //
-        // Supervisor 负责用户服务的 prepare→run→cleanup。它们的 `run` 任务在 Supervisor::run
-        // 内部被 spawn 到一个*独立的* JoinSet 里;我们把整个 Supervisor 生命周期包进单个任务,
-        // 好让停机传播保持统一。
-        if !self.services.is_empty() {
+        // —— 4. 经 Supervisor 运行用户服务(必选 + 可选,若有)。——
+        if !self.services.is_empty() || !self.optional_services.is_empty() {
             let mut supervisor = Supervisor::new();
             for svc in self.services {
                 supervisor = supervisor.add(svc);
             }
+            for svc in self.optional_services {
+                supervisor = supervisor.add_optional(svc);
+            }
+            // 预置共享句柄到 bus(供服务 prepare 取用),须在 Supervisor::run 消费它之前。
+            let bus = supervisor.bus();
+            for seed in self.service_seeds {
+                seed(&bus);
+            }
+            bus.insert(bot.clone()); // 让 service 能 bus.get::<Bot>()
             let svc_shutdown = shutdown.clone();
             tasks.spawn(async move {
                 supervisor.run(svc_shutdown).await

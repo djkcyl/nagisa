@@ -99,10 +99,14 @@ pub trait Service: Send + Sync + 'static {
     }
 }
 
-/// 服务生命周期 Supervisor：注册一批服务，按依赖 DAG 编排 prepare→run→cleanup。
+/// 服务生命周期 Supervisor:注册一批服务,按依赖 DAG 编排 prepare→run→cleanup。
 #[derive(Default)]
 pub struct Supervisor {
     services: Vec<Arc<dyn Service>>,
+    /// 与 `services` 平行:第 i 个服务是否为「可选」。可选服务的 `prepare`/`run` 失败只记
+    /// 日志、不回滚其余、不触发整体收束——用于「附加能力」型服务(如 web 后台),起不来
+    /// 不该拖垮 bot 主体。
+    optional: Vec<bool>,
     bus: ServiceBus,
 }
 
@@ -112,12 +116,24 @@ impl Supervisor {
         Self::default()
     }
 
-    /// 注册一个服务。
+    /// 注册一个(必选)服务。其 `prepare`/`run` 失败会触发整体回滚/收束。
     ///
-    /// 名为 `add` 是既定的 builder API（非 `std::ops::Add`）。
+    /// 名为 `add` 是既定的 builder API(非 `std::ops::Add`)。
     #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, service: Arc<dyn Service>) -> Self {
         self.services.push(service);
+        self.optional.push(false);
+        self
+    }
+
+    /// 注册一个**可选**服务:它的 `prepare`/`run` 失败只记日志,**不**回滚其他服务、**不**
+    /// 触发整体收束。用于附加能力型服务(如 web 后台)。
+    ///
+    /// 约定:可选服务应是依赖图的**叶子**(不被其他服务 `deps()` 引用);依赖一个被跳过的
+    /// 可选服务属配置错误。
+    pub fn add_optional(mut self, service: Arc<dyn Service>) -> Self {
+        self.services.push(service);
+        self.optional.push(true);
         self
     }
 
@@ -135,34 +151,40 @@ impl Supervisor {
     ///
     /// 返回：若某 `run` 提前以 `Err` 收束则透传该错误，否则 `Ok(())`。
     pub async fn run(self, shutdown: ShutdownToken) -> Result<()> {
-        let Supervisor { services, bus } = self;
+        let Supervisor { services, optional, bus } = self;
 
         // —— 拓扑排序（Kahn）：得到 prepare/run 顺序的下标序列。——
         let order = toposort(&services)?;
 
-        // —— 1. prepare：按拓扑序逐个 await；失败则逆序 cleanup 已就绪者。——
+        // —— 1. prepare：按拓扑序逐个 await。
+        //    必选失败 → 逆序 cleanup 已就绪者后返回 Err;
+        //    可选失败 → 记 warn、跳过（不进 prepared、不 spawn 其 run）。——
         let mut prepared: Vec<usize> = Vec::with_capacity(order.len());
         for &idx in &order {
             match services[idx].prepare(&bus).await {
                 Ok(()) => prepared.push(idx),
+                Err(e) if optional[idx] => {
+                    tracing::warn!(service = services[idx].id(), error = %e, "可选服务 prepare 失败;已跳过");
+                }
                 Err(e) => {
-                    tracing::error!(service = services[idx].id(), error = %e, "service prepare failed; cleaning up");
+                    tracing::error!(service = services[idx].id(), error = %e, "必选服务 prepare 失败,清理已就绪者");
                     cleanup_reverse(&services, &prepared, &bus).await;
                     return Err(e);
                 }
             }
         }
 
-        // —— 2. run：全部 spawn，各持子 shutdown token。——
-        let mut set: JoinSet<Result<()>> = JoinSet::new();
-        for &idx in &order {
+        // —— 2. run：只 spawn 成功 prepare 的服务；任务携带其下标以便区分可选与否。——
+        let mut set: JoinSet<(usize, Result<()>)> = JoinSet::new();
+        for &idx in &prepared {
             let svc = Arc::clone(&services[idx]);
             let bus = bus.clone();
             let child = shutdown.child_token();
-            set.spawn(async move { svc.run(bus, child).await });
+            set.spawn(async move { (idx, svc.run(bus, child).await) });
         }
 
-        // await 至：shutdown 触发，或某 run 任务返回（Err 透传、Ok 视该服务自然退出）。
+        // await 至：shutdown 触发，或某 run 任务返回。
+        // 必选 run Err → 收束；可选 run Err → 记 warn、隔离，继续等其余。
         let mut run_result: Result<()> = Ok(());
         loop {
             tokio::select! {
@@ -170,20 +192,20 @@ impl Supervisor {
                 _ = shutdown.cancelled() => break,
                 joined = set.join_next() => {
                     match joined {
-                        // 所有 run 任务都已退出。
                         None => break,
-                        Some(Ok(Ok(()))) => continue, // 某服务自然结束；继续等其余。
-                        Some(Ok(Err(e))) => {
-                            tracing::error!(error = %e, "service run task returned error; shutting down");
+                        Some(Ok((_idx, Ok(())))) => continue,
+                        Some(Ok((idx, Err(e)))) if optional[idx] => {
+                            tracing::warn!(service = services[idx].id(), error = %e, "可选服务 run 出错;已隔离,不影响其余");
+                            continue;
+                        }
+                        Some(Ok((idx, Err(e)))) => {
+                            tracing::error!(service = services[idx].id(), error = %e, "必选服务 run 出错,收束");
                             run_result = Err(e);
                             break;
                         }
                         Some(Err(join_err)) => {
-                            // run 任务 panic：隔离为错误，触发整体收束，不向上 panic。
-                            tracing::error!(error = %join_err, "service run task panicked; shutting down");
-                            run_result = Err(internal_err(format!(
-                                "service run task panicked: {join_err}"
-                            )));
+                            tracing::error!(error = %join_err, "服务 run 任务 panic,收束");
+                            run_result = Err(internal_err(format!("服务 run 任务 panic:{join_err}")));
                             break;
                         }
                     }
@@ -191,10 +213,10 @@ impl Supervisor {
             }
         }
 
-        // —— 3. cleanup：触发 shutdown，等剩余 run 任务收束，再逆拓扑序 cleanup。——
+        // —— 3. cleanup：触发 shutdown，等剩余 run 任务收束，再对**已就绪**服务逆拓扑序 cleanup。——
         shutdown.cancel();
-        set.shutdown().await; // 等所有 run 任务结束（已 abort/或正常退出）。
-        cleanup_reverse(&services, &order, &bus).await;
+        set.shutdown().await;
+        cleanup_reverse(&services, &prepared, &bus).await;
 
         run_result
     }
@@ -205,7 +227,7 @@ impl Supervisor {
 async fn cleanup_reverse(services: &[Arc<dyn Service>], indices: &[usize], bus: &ServiceBus) {
     for &idx in indices.iter().rev() {
         if let Err(e) = services[idx].cleanup(bus).await {
-            tracing::error!(service = services[idx].id(), error = %e, "service cleanup failed");
+            tracing::error!(service = services[idx].id(), error = %e, "服务清理失败");
         }
     }
 }

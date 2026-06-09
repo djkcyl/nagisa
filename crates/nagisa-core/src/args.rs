@@ -142,6 +142,49 @@ pub trait ParseArgs: Sized {
         -> std::result::Result<Self, ArgError>;
 }
 
+/// 参数角色,决定 help 里的写法(旗标 `[-a]` / 选项 `[-r 值]` / 位置 `<名>` 等)。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArgKind {
+    /// 布尔旗标,如 `-a` / `--anonymous`。
+    Flag,
+    /// 取值选项,如 `-r 值` / `--remaining 值`。
+    Opt,
+    /// 文本位置参。
+    Positional,
+    /// 收尾自由文本。
+    Rest,
+    /// `@某人` 或裸 QQ 号。
+    AtOrId,
+    /// 消息元素(图片 / at / 回复…)。
+    Element,
+}
+
+/// 一个命令参数的元数据(由 `#[derive(Args)]` 生成),供 help 自动生成用法说明。
+#[derive(Clone, Copy, Debug)]
+pub struct ArgSpec {
+    /// 显示名(`#[arg(name="…")]`,缺则字段标识符)。
+    pub name: &'static str,
+    /// 角色(旗标 / 选项 / 位置 / …)。
+    pub kind: ArgKind,
+    /// 短旗标字符(无则空串),如 `a`。
+    pub short: &'static str,
+    /// 长旗标名(无则空串),如 `anonymous`。
+    pub long: &'static str,
+    /// 是否必填(非 `Option`、无 `default` 的位置 / 元素 / at_or_id 参)。
+    pub required: bool,
+    /// 默认值(`#[arg(default="…")]`,无则空串)。
+    pub default: &'static str,
+    /// 一句话说明(`#[arg(desc="…")]`,无则空串)。
+    pub desc: &'static str,
+}
+
+/// 由 `#[derive(Args)]` 生成,暴露各字段的 [`ArgSpec`],供 help 自动生成用法。无字段或手写
+/// `ParseArgs` 的类型可不实现(此时 help 退回命令级 `usage` 文本)。
+pub trait ArgsMeta {
+    /// 按声明顺序排列的参数规格。
+    const SPECS: &'static [ArgSpec];
+}
+
 /// 类型化参数提取器:`async fn h(args: Args<MyArgs>)`。
 /// 仅在命令匹配后(`ParsedCommand` 存在)可用;解析失败 → `Skip`(=本 handler 不触发)。
 pub struct Args<T>(pub T);

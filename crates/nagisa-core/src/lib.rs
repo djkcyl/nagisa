@@ -103,8 +103,8 @@ pub mod service;
 pub mod slots;
 pub mod source;
 
-pub use args::{ArgError, ArgToken, Args, FromArg, ParseArgs};
-pub use bot::{set_outgoing_logger, Bot};
+pub use args::{ArgError, ArgKind, ArgSpec, Args, ArgsMeta, ArgToken, FromArg, ParseArgs};
+pub use bot::{add_outgoing_logger, set_outgoing_logger, Bot};
 pub use impl_info::ImplInfo;
 pub use nagisa_types::vendor::Vendor;
 pub use source::EventSource;

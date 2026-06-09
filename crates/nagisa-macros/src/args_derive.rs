@@ -74,6 +74,14 @@ struct ArgField {
     default: std::option::Option<String>,
     /// `#[arg(rest, raw)]`:文本 rest 取原文(保真空白/换行),而非按词重拼。
     raw: bool,
+    /// `#[arg(name="…")]`:help 里的显示名(缺则字段标识符)。
+    name: std::option::Option<String>,
+    /// `#[arg(desc="…")]`:help 里的一句话说明。
+    desc: std::option::Option<String>,
+    /// 短旗标字符（仅旗标/选项有），供 `ArgSpec`。
+    short: std::option::Option<char>,
+    /// 长旗标名（仅旗标/选项有，显式 `long="…"` 或字段名），供 `ArgSpec`。
+    long_name: std::option::Option<String>,
 }
 
 pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
@@ -104,6 +112,8 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
         let mut default: std::option::Option<String> = None;
         let mut elem: std::option::Option<ElemKind> = None;
         let mut is_at_or_id = false;
+        let mut name: std::option::Option<String> = None;
+        let mut desc: std::option::Option<String> = None;
 
         for attr in &field.attrs {
             if !attr.path().is_ident("arg") {
@@ -132,6 +142,14 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
                 } else if p.is_ident("default") {
                     let s: LitStr = meta.value()?.parse()?;
                     default = Some(s.value());
+                } else if p.is_ident("name") {
+                    // help 显示名(中文友好),不影响解析。
+                    let s: LitStr = meta.value()?.parse()?;
+                    name = Some(s.value());
+                } else if p.is_ident("desc") {
+                    // help 一句话说明,不影响解析。
+                    let s: LitStr = meta.value()?.parse()?;
+                    desc = Some(s.value());
                 } else if p.is_ident("at_or_id") {
                     // `Uin` 字段:取一个 @ 提及元素,没有则取下一个文本词当号(兼容 "@123"/"123")。
                     is_at_or_id = true;
@@ -147,12 +165,17 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
         }
 
         let mut match_lits: Vec<LitStr> = Vec::new();
-        if is_flag || long.is_some() {
-            let name = match &long {
+        // 旗标/选项的长名:显式 `long="…"` 或退回字段名;非旗标/选项为 None(供 ArgSpec)。
+        let long_name = if is_flag || long.is_some() {
+            std::option::Option::Some(match &long {
                 Some(Some(n)) => n.clone(),
                 _ => ident.to_string(),
-            };
-            match_lits.push(LitStr::new(&format!("--{name}"), Span::call_site()));
+            })
+        } else {
+            std::option::Option::None
+        };
+        if let Some(n) = &long_name {
+            match_lits.push(LitStr::new(&format!("--{n}"), Span::call_site()));
             if let Some(c) = short {
                 match_lits.push(LitStr::new(&format!("-{c}"), Span::call_site()));
             }
@@ -176,7 +199,18 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
             ArgRole::TextPositional
         };
 
-        parsed.push(ArgField { ident, ty, role, match_lits, default, raw: is_raw });
+        parsed.push(ArgField {
+            ident,
+            ty,
+            role,
+            match_lits,
+            default,
+            raw: is_raw,
+            name,
+            desc,
+            short,
+            long_name,
+        });
     }
 
     // —— 扫描器:变量声明 + Word 匹配臂(选项/旗标)。——
@@ -387,6 +421,48 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
         }
     }
 
+    // —— `ArgsMeta::SPECS`:每字段一条 `ArgSpec`,供 help 自动生成用法说明。——
+    let specs: Vec<proc_macro2::TokenStream> = parsed
+        .iter()
+        .map(|f| {
+            let disp = f.name.clone().unwrap_or_else(|| f.ident.to_string());
+            let name_lit = LitStr::new(&disp, Span::call_site());
+            let kind = match &f.role {
+                ArgRole::Flag => quote! { #nc::ArgKind::Flag },
+                ArgRole::TextOption => quote! { #nc::ArgKind::Opt },
+                ArgRole::TextPositional => quote! { #nc::ArgKind::Positional },
+                ArgRole::TextRest => quote! { #nc::ArgKind::Rest },
+                ArgRole::AtOrId => quote! { #nc::ArgKind::AtOrId },
+                ArgRole::ElementPositional(_) | ArgRole::ElementRest(_) => {
+                    quote! { #nc::ArgKind::Element }
+                }
+            };
+            let short_lit =
+                LitStr::new(&f.short.map(|c| c.to_string()).unwrap_or_default(), Span::call_site());
+            let long_lit = LitStr::new(f.long_name.as_deref().unwrap_or(""), Span::call_site());
+            // 必填 = 非 `Option` 且无 `default` 的位置 / 元素位置 / at_or_id;旗标 / 选项 / rest / 元素rest 恒非必填。
+            let required = match &f.role {
+                ArgRole::Flag | ArgRole::TextOption | ArgRole::TextRest | ArgRole::ElementRest(_) => {
+                    false
+                }
+                _ => option_inner(&f.ty).is_none() && f.default.is_none(),
+            };
+            let default_lit = LitStr::new(f.default.as_deref().unwrap_or(""), Span::call_site());
+            let desc_lit = LitStr::new(f.desc.as_deref().unwrap_or(""), Span::call_site());
+            quote! {
+                #nc::ArgSpec {
+                    name: #name_lit,
+                    kind: #kind,
+                    short: #short_lit,
+                    long: #long_lit,
+                    required: #required,
+                    default: #default_lit,
+                    desc: #desc_lit,
+                }
+            }
+        })
+        .collect();
+
     Ok(quote! {
         impl #nc::ParseArgs for #struct_ident {
             fn parse_args(__tokens: &[#nc::ArgToken<'_>], __raw_text: &str)
@@ -414,6 +490,10 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
                 #(#builders)*
                 ::std::result::Result::Ok(#struct_ident { #(#field_idents),* })
             }
+        }
+
+        impl #nc::ArgsMeta for #struct_ident {
+            const SPECS: &'static [#nc::ArgSpec] = &[ #(#specs),* ];
         }
     })
 }

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use crate::font::FontHandle;
-use crate::model::Color;
+use crate::model::{Align, Color};
 
 /// 四边内边距(逻辑像素)。
 #[derive(Clone, Copy, Debug)]
@@ -155,6 +155,58 @@ pub struct RenderOptions {
     pub format: OutputFormat,
     /// 标记文本里 `@名字` 图片 → 字节。
     pub images: HashMap<String, Vec<u8>>,
+    /// 页眉条(可选):一行小字排在内容上方,与文档无关的固定标识(品牌 / 出处)。
+    pub header: Option<PageChrome>,
+    /// 页脚条(可选):一行小字排在内容下方,常放项目水印(如「abot · github.com/…」)。
+    pub footer: Option<PageChrome>,
+}
+
+/// 页眉 / 页脚条:一行小字 + 可选的与内容之间的细分割线。参与布局高度
+/// ([`measure_document`](crate::measure_document) 自然包含),不归文档内容管——同一品牌
+/// 标识配在 `RenderOptions` 上,所有出图统一带。
+#[derive(Clone, Debug)]
+pub struct PageChrome {
+    /// 文字。
+    pub text: String,
+    /// 水平对齐(`with_header` 默认左、`with_footer` 默认居中)。
+    pub align: Align,
+    /// 文字色;`None` = 主题次要色(muted)。
+    pub color: Option<Color>,
+    /// 相对基准字号的倍率(默认 0.72)。
+    pub size: f32,
+    /// 与内容之间画一条细线(默认开)。
+    pub rule: bool,
+}
+
+impl PageChrome {
+    /// 默认形态:次要色小字、带细线、左对齐。
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into(), align: Align::Left, color: None, size: 0.72, rule: true }
+    }
+    /// 设对齐。
+    pub fn align(mut self, a: Align) -> Self {
+        self.align = a;
+        self
+    }
+    /// 设文字色(十六进制;非法忽略)。
+    pub fn color(mut self, hex: &str) -> Self {
+        if let Some(c) = Color::hex(hex) {
+            self.color = Some(c);
+        }
+        self
+    }
+    /// 设字号倍率(非法忽略)。
+    pub fn size(mut self, mult: f32) -> Self {
+        if mult.is_finite() && mult > 0.0 {
+            self.size = mult;
+        }
+        self
+    }
+    /// 不画细线。
+    pub fn no_rule(mut self) -> Self {
+        self.rule = false;
+        self
+    }
 }
 
 impl Default for RenderOptions {
@@ -167,6 +219,8 @@ impl Default for RenderOptions {
             fonts: FontHandle::shared_default(),
             format: OutputFormat::Png,
             images: HashMap::new(),
+            header: None,
+            footer: None,
         }
     }
 }
@@ -212,6 +266,24 @@ impl RenderOptions {
     /// 清晰度预设:超清(scale 3)——最清晰也最慢 / 最大。
     pub fn ultra(self) -> Self {
         self.with_scale(3.0)
+    }
+    /// 设页眉(默认形态:左对齐次要色小字 + 细线);要微调用 [`with_header_chrome`](Self::with_header_chrome)。
+    pub fn with_header(self, text: impl Into<String>) -> Self {
+        self.with_header_chrome(PageChrome::new(text))
+    }
+    /// 设页眉(完整形态)。
+    pub fn with_header_chrome(mut self, c: PageChrome) -> Self {
+        self.header = Some(c);
+        self
+    }
+    /// 设页脚(默认形态:居中次要色小字 + 细线,适合项目水印);微调用 [`with_footer_chrome`](Self::with_footer_chrome)。
+    pub fn with_footer(self, text: impl Into<String>) -> Self {
+        self.with_footer_chrome(PageChrome::new(text).align(Align::Center))
+    }
+    /// 设页脚(完整形态)。
+    pub fn with_footer_chrome(mut self, c: PageChrome) -> Self {
+        self.footer = Some(c);
+        self
     }
     /// 设输出格式。
     pub fn with_format(mut self, f: OutputFormat) -> Self {

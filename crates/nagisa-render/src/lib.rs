@@ -81,7 +81,7 @@ pub use model::{
     FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind, Shadow,
     Table, TableGrid, TableStyle, TextStyle, Watermark,
 };
-pub use theme::{Insets, OutputFormat, RenderOptions, Theme};
+pub use theme::{Insets, OutputFormat, PageChrome, RenderOptions, Theme};
 
 /// 解析标记文本并渲染成图片字节(格式由 [`RenderOptions::format`] 决定,默认 PNG)。
 pub fn render_markup(src: &str, opts: &RenderOptions) -> Result<Vec<u8>> {

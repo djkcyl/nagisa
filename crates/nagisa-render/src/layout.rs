@@ -125,8 +125,14 @@ pub(crate) fn layout_document(doc: &Document, opts: &RenderOptions) -> Result<La
     let x_left = pad.left * sc;
 
     let mut ctx = LayoutCtx { opts, sc, items: Vec::new(), images: Vec::new(), y: pad.top * sc };
+    if let Some(c) = &opts.header {
+        ctx.chrome_bar(c, x_left, content_w, true);
+    }
     for (i, block) in doc.blocks.iter().enumerate() {
         ctx.block(block, x_left, content_w, i == 0);
+    }
+    if let Some(c) = &opts.footer {
+        ctx.chrome_bar(c, x_left, content_w, false);
     }
 
     let height_f = ctx.y + pad.bottom * sc;
@@ -401,6 +407,52 @@ impl LayoutCtx<'_> {
             self.y += h;
         }
         self.y += base * sc * 0.4;
+    }
+
+    /// 页眉 / 页脚条:一行小字 + 可选细线。`top = true` 排在内容前(字在上、线在下),
+    /// 否则排在内容后(线在上、字在下)。字色缺省用主题次要色。
+    fn chrome_bar(&mut self, c: &crate::theme::PageChrome, x: f32, w: f32, top: bool) {
+        let (base, sc) = (self.opts.theme.base_size, self.sc);
+        let px = base * c.size;
+        let ink = c.color.unwrap_or(self.opts.theme.muted);
+        let inl = [Inline::Text {
+            text: c.text.clone(),
+            style: TextStyle { color: Some(ink), ..TextStyle::default() },
+        }];
+        let hairline = (1.0 * sc).max(1.0);
+        if top {
+            let h = self.emit_text(&inl, c.align, px, false, x, self.y, w);
+            self.y += h + base * sc * 0.35;
+            if c.rule {
+                self.items.push(DisplayItem::Rect {
+                    x,
+                    y: self.y,
+                    w,
+                    h: hairline,
+                    color: self.opts.theme.border,
+                    radius: 0.0,
+                    layer: RectLayer::Under,
+                });
+                self.y += hairline;
+            }
+            self.y += base * sc * 0.5;
+        } else {
+            self.y += base * sc * 0.6;
+            if c.rule {
+                self.items.push(DisplayItem::Rect {
+                    x,
+                    y: self.y,
+                    w,
+                    h: hairline,
+                    color: self.opts.theme.border,
+                    radius: 0.0,
+                    layer: RectLayer::Under,
+                });
+                self.y += hairline + base * sc * 0.35;
+            }
+            let h = self.emit_text(&inl, c.align, px, false, x, self.y, w);
+            self.y += h;
+        }
     }
 
     /// 图面装饰层:边框(描边随圆角)/ 角标(圆角底板 + 文字)/ 水印(半透明文字)。

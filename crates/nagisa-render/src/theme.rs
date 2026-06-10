@@ -138,10 +138,10 @@ pub enum OutputFormat {
     WebpOrPng,
 }
 
-/// 渲染入参。链式覆写;`default()` = 720 逻辑宽、亮色、scale 2、PNG、默认字体句柄。
+/// 渲染入参。链式覆写;`default()` = 960 逻辑宽、亮色、scale 2、PNG、默认字体句柄。
 #[derive(Clone)]
 pub struct RenderOptions {
-    /// 逻辑内容宽(含左右内边距),默认 720。
+    /// 逻辑内容宽(含左右内边距),默认 960。
     pub width: f32,
     /// 页边距(逻辑像素)。
     pub padding: Insets,
@@ -160,7 +160,7 @@ pub struct RenderOptions {
 impl Default for RenderOptions {
     fn default() -> Self {
         Self {
-            width: 720.0,
+            width: 960.0,
             padding: Insets::symmetric(32.0, 40.0),
             scale: 2.0,
             theme: Theme::light(),

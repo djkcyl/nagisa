@@ -409,16 +409,25 @@ impl LayoutCtx<'_> {
         self.y += base * sc * 0.4;
     }
 
-    /// 页眉 / 页脚条:一行小字 + 可选细线。`top = true` 排在内容前(字在上、线在下),
-    /// 否则排在内容后(线在上、字在下)。字色缺省用主题次要色。
+    /// 页眉 / 页脚条:一行小字(可富文本)+ 可选细线。`top = true` 排在内容前(字在上、
+    /// 线在下),否则排在内容后(线在上、字在下)。未显式上色的 span 染缺省色(主题次要色)。
     fn chrome_bar(&mut self, c: &crate::theme::PageChrome, x: f32, w: f32, top: bool) {
         let (base, sc) = (self.opts.theme.base_size, self.sc);
         let px = base * c.size;
         let ink = c.color.unwrap_or(self.opts.theme.muted);
-        let inl = [Inline::Text {
-            text: c.text.clone(),
-            style: TextStyle { color: Some(ink), ..TextStyle::default() },
-        }];
+        let inl: Vec<Inline> = c
+            .inlines
+            .iter()
+            .cloned()
+            .map(|mut i| {
+                if let Inline::Text { style, .. } = &mut i {
+                    if style.color.is_none() {
+                        style.color = Some(ink);
+                    }
+                }
+                i
+            })
+            .collect();
         let hairline = (1.0 * sc).max(1.0);
         if top {
             let h = self.emit_text(&inl, c.align, px, false, x, self.y, w);

@@ -173,8 +173,13 @@ pub struct ParaBuilder {
 }
 
 impl ParaBuilder {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { inlines: Vec::new(), align: Align::Left }
+    }
+
+    /// 取走已累积的行内序列(页眉/页脚的富文本构造用)。
+    pub(crate) fn into_inlines(self) -> Vec<Inline> {
+        self.inlines
     }
 
     /// 设对齐。

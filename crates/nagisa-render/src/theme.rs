@@ -3,8 +3,9 @@
 
 use std::collections::HashMap;
 
+use crate::build::ParaBuilder;
 use crate::font::FontHandle;
-use crate::model::{Align, Color};
+use crate::model::{Align, Color, Inline, TextStyle};
 
 /// 四边内边距(逻辑像素)。
 #[derive(Clone, Copy, Debug)]
@@ -161,16 +162,16 @@ pub struct RenderOptions {
     pub footer: Option<PageChrome>,
 }
 
-/// 页眉 / 页脚条:一行小字 + 可选的与内容之间的细分割线。参与布局高度
+/// 页眉 / 页脚条:一行小字(可富文本)+ 可选的与内容之间的细分割线。参与布局高度
 /// ([`measure_document`](crate::measure_document) 自然包含),不归文档内容管——同一品牌
 /// 标识配在 `RenderOptions` 上,所有出图统一带。
 #[derive(Clone, Debug)]
 pub struct PageChrome {
-    /// 文字。
-    pub text: String,
+    /// 行内内容(纯文字经 [`new`](Self::new),富文本经 [`rich`](Self::rich))。
+    pub inlines: Vec<Inline>,
     /// 水平对齐(`with_header` 默认左、`with_footer` 默认居中)。
     pub align: Align,
-    /// 文字色;`None` = 主题次要色(muted)。
+    /// 缺省文字色:未显式上色的 span 用它;`None` = 主题次要色(muted)。
     pub color: Option<Color>,
     /// 相对基准字号的倍率(默认 0.72)。
     pub size: f32,
@@ -181,7 +182,19 @@ pub struct PageChrome {
 impl PageChrome {
     /// 默认形态:次要色小字、带细线、左对齐。
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into(), align: Align::Left, color: None, size: 0.72, rule: true }
+        Self::from_inlines(vec![Inline::Text { text: text.into(), style: TextStyle::default() }])
+    }
+
+    /// 富文本形态:闭包拼行内(粗细 / 色 / 字号倍率皆可,如品牌名加重、连接词浅色)。
+    /// `p.styled("abot", |s| { s.weight(600); })` 这类未显式上色的 span 仍按缺省色染。
+    pub fn rich<R>(f: impl FnOnce(&mut ParaBuilder) -> R) -> Self {
+        let mut pb = ParaBuilder::new();
+        let _ = f(&mut pb);
+        Self::from_inlines(pb.into_inlines())
+    }
+
+    fn from_inlines(inlines: Vec<Inline>) -> Self {
+        Self { inlines, align: Align::Left, color: None, size: 0.72, rule: true }
     }
     /// 设对齐。
     pub fn align(mut self, a: Align) -> Self {

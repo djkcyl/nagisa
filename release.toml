@@ -1,0 +1,6 @@
+# 发版统一走 cargo-release(CI 的 Release workflow 调用),不再手动 sed/打 tag。
+allow-branch = ["master"]
+shared-version = true        # 八个 crate 锁步同一版本号,内部依赖约束随之升级
+consolidate-commits = true   # 升版合成一个提交
+pre-release-commit-message = "Release {{version}}"
+tag = false                  # 单一全局 tag 由门面 nagisa 打,见 crates/nagisa/release.toml

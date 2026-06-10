@@ -3,7 +3,8 @@
 //!
 //! 矩形(背景 / 高亮 / 分割线 / 引用条 / 代码底 / 表格网格)走 tiny-skia 的抗锯齿填充;字形由
 //! cosmic-text 的 `SwashCache` 栅格成覆盖率 / 彩色位图,按笔位 premultiplied-alpha 合成进画布;
-//! 内嵌图同样合成。顺序:背景 → 衬底矩形 → 图 → 字形 → 覆盖矩形(下划 / 删除)。
+//! 内嵌图同样合成(可圆角裁切)。顺序:背景 → 衬底矩形 → 投影 → 图 → 角标底板/边框 →
+//! 字形(影先字后) → 覆盖矩形(下划 / 删除)。
 
 use cosmic_text::{SwashContent, SwashImage};
 use image::codecs::png::{CompressionType, FilterType};
@@ -11,7 +12,7 @@ use image::{ExtendedColorType, ImageEncoder};
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, PremultipliedColorU8, Rect, Transform};
 
 use crate::error::{Error, Result};
-use crate::layout::{DisplayItem, Layout, PlacedGlyph};
+use crate::layout::{DisplayItem, Layout, PlacedGlyph, RectLayer, ShadowItem, StrokeItem};
 use crate::model::Color;
 use crate::theme::{OutputFormat, RenderOptions};
 
@@ -91,33 +92,185 @@ fn render_pixmap(layout: &Layout, opts: &RenderOptions) -> Result<Pixmap> {
         .ok_or_else(|| Error::Layout("画布尺寸非法(过大或为 0)".into()))?;
     pix.fill(to_skia(opts.theme.background));
 
-    // 1) 衬底矩形(背景 / 高亮 / 底色,over=false)——在字形之前。
+    // 1) 衬底矩形(背景 / 高亮 / 底色,Under)——在一切之前。
     for item in &layout.items {
-        if let DisplayItem::Rect { x, y, w, h, color, radius, over: false } = item {
+        if let DisplayItem::Rect { x, y, w, h, color, radius, layer: RectLayer::Under } = item {
             draw_rect(&mut pix, *x, *y, *w, *h, *color, *radius);
         }
     }
-    // 2) 图片(M4 起填充 layout.images)。
+    // 2) 投影(模糊圆角矩形)——压在衬底上、垫在图片下。
     for item in &layout.items {
-        if let DisplayItem::Image { x, y, w, h, src } = item {
+        if let DisplayItem::Shadow(s) = item {
+            draw_shadow(&mut pix, s);
+        }
+    }
+    // 3) 图片(M4 起填充 layout.images;radius > 0 圆角裁切)。
+    for item in &layout.items {
+        if let DisplayItem::Image { x, y, w, h, src, radius } = item {
             if let Some(img) = layout.images.get(*src) {
-                draw_image(&mut pix, img, *x, *y, *w, *h);
+                draw_image(&mut pix, img, *x, *y, *w, *h, *radius);
             }
         }
     }
-    // 3) 字形。
+    // 4) 图面覆盖件:角标底板(Mid)与边框描边——在图之上、字形之下。
+    for item in &layout.items {
+        match item {
+            DisplayItem::Rect { x, y, w, h, color, radius, layer: RectLayer::Mid } => {
+                draw_rect(&mut pix, *x, *y, *w, *h, *color, *radius);
+            }
+            DisplayItem::StrokeRect(s) => {
+                draw_stroke_rect(&mut pix, s);
+            }
+            _ => {}
+        }
+    }
+    // 5) 字形(带阴影的先画影、再画字)。
     for item in &layout.items {
         if let DisplayItem::Glyphs(glyphs) = item {
             draw_glyphs(&mut pix, opts, glyphs);
         }
     }
-    // 4) 覆盖矩形(下划 / 删除,over=true)——在字形之上。
+    // 6) 覆盖矩形(下划 / 删除,Over)——在字形之上。
     for item in &layout.items {
-        if let DisplayItem::Rect { x, y, w, h, color, radius, over: true } = item {
+        if let DisplayItem::Rect { x, y, w, h, color, radius, layer: RectLayer::Over } = item {
             draw_rect(&mut pix, *x, *y, *w, *h, *color, *radius);
         }
     }
     Ok(pix)
+}
+
+/// 画投影:把(可圆角)矩形蒙版做三次盒模糊(逼近高斯),按色与 alpha 染色后合成。
+/// `blur` 为软化半径(物理像素),≤ 0.5 退化为实心矩形。
+fn draw_shadow(pix: &mut Pixmap, s: &ShadowItem) {
+    let &ShadowItem { x, y, w, h, radius, blur, color } = s;
+    if w <= 0.0 || h <= 0.0 || color.a == 0 {
+        return;
+    }
+    if blur <= 0.5 {
+        draw_rect(pix, x, y, w, h, color, radius);
+        return;
+    }
+    // 蒙版画布:四周各留 2×blur 余量装得下扩散。
+    let pad = (blur * 2.0).ceil();
+    let mw = (w + pad * 2.0).ceil() as usize;
+    let mh = (h + pad * 2.0).ceil() as usize;
+    if mw == 0 || mh == 0 || mw * mh > 64_000_000 {
+        return; // 蒙版过大(异常尺寸)直接放弃,不让一张影子吃光内存
+    }
+    // 1) 矩形(含圆角)覆盖率蒙版。
+    let mut mask = vec![0f32; mw * mh];
+    let r = radius.min(w / 2.0).min(h / 2.0).max(0.0);
+    for (j, row) in mask.chunks_mut(mw).enumerate() {
+        for (i, m) in row.iter_mut().enumerate() {
+            let (fx, fy) = (i as f32 + 0.5 - pad, j as f32 + 0.5 - pad);
+            if fx < 0.0 || fy < 0.0 || fx > w || fy > h {
+                continue;
+            }
+            *m = if r > 0.0 { corner_coverage(fx, fy, w, h, r) } else { 1.0 };
+        }
+    }
+    // 2) 三次盒模糊(半径 ≈ blur/2,三次叠加逼近高斯)。
+    let br = ((blur / 2.0).round() as usize).max(1);
+    for _ in 0..3 {
+        box_blur_h(&mut mask, mw, mh, br);
+        box_blur_v(&mut mask, mw, mh, br);
+    }
+    // 3) 染色成预乘小图,整张合成(tiny-skia 负责边界与混合)。
+    let Some(mut sp) = Pixmap::new(mw as u32, mh as u32) else { return };
+    {
+        let px_buf = sp.pixels_mut();
+        let (cr, cg, cb) = (color.r as f32, color.g as f32, color.b as f32);
+        let ca = color.a as f32 / 255.0;
+        for (k, &m) in mask.iter().enumerate() {
+            let a = (m * ca * 255.0).round().clamp(0.0, 255.0) as u8;
+            if a == 0 {
+                continue;
+            }
+            let pm = |c: f32| ((c * a as f32) / 255.0).round() as u8;
+            if let Some(c) = PremultipliedColorU8::from_rgba(pm(cr), pm(cg), pm(cb), a) {
+                px_buf[k] = c;
+            }
+        }
+    }
+    pix.draw_pixmap(
+        (x - pad).round() as i32,
+        (y - pad).round() as i32,
+        sp.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
+}
+
+/// 水平盒模糊(滑动窗口均值,越界按边沿值钳住)。
+fn box_blur_h(buf: &mut [f32], w: usize, h: usize, r: usize) {
+    if w == 0 || r == 0 {
+        return;
+    }
+    let mut row = vec![0f32; w];
+    let norm = 1.0 / (2 * r + 1) as f32;
+    for j in 0..h {
+        let line = &buf[j * w..(j + 1) * w];
+        let mut acc: f32 = 0.0;
+        for k in -(r as isize)..=(r as isize) {
+            acc += line[k.clamp(0, w as isize - 1) as usize];
+        }
+        for (i, out) in row.iter_mut().enumerate() {
+            *out = acc * norm;
+            let add = (i as isize + r as isize + 1).clamp(0, w as isize - 1) as usize;
+            let sub = (i as isize - r as isize).clamp(0, w as isize - 1) as usize;
+            acc += line[add] - line[sub];
+        }
+        buf[j * w..(j + 1) * w].copy_from_slice(&row);
+    }
+}
+
+/// 垂直盒模糊(同 [`box_blur_h`],按列)。
+fn box_blur_v(buf: &mut [f32], w: usize, h: usize, r: usize) {
+    if h == 0 || r == 0 {
+        return;
+    }
+    let mut col = vec![0f32; h];
+    let norm = 1.0 / (2 * r + 1) as f32;
+    for i in 0..w {
+        let mut acc: f32 = 0.0;
+        for k in -(r as isize)..=(r as isize) {
+            acc += buf[k.clamp(0, h as isize - 1) as usize * w + i];
+        }
+        for (j, out) in col.iter_mut().enumerate() {
+            *out = acc * norm;
+            let add = (j as isize + r as isize + 1).clamp(0, h as isize - 1) as usize;
+            let sub = (j as isize - r as isize).clamp(0, h as isize - 1) as usize;
+            acc += buf[add * w + i] - buf[sub * w + i];
+        }
+        for (j, v) in col.iter().enumerate() {
+            buf[j * w + i] = *v;
+        }
+    }
+}
+
+/// 画(可圆角)描边矩形:图片边框。线宽沿路径居中,内外各吃一半。
+fn draw_stroke_rect(pix: &mut Pixmap, s: &StrokeItem) {
+    let &StrokeItem { x, y, w, h, radius, width, color } = s;
+    if w <= 0.0 || h <= 0.0 || width <= 0.0 {
+        return;
+    }
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+    paint.anti_alias = true;
+    let path = if radius > 0.0 {
+        rounded_rect(x, y, w, h, radius)
+    } else {
+        Rect::from_xywh(x, y, w, h).and_then(|r| {
+            let mut pb = PathBuilder::new();
+            pb.push_rect(r);
+            pb.finish()
+        })
+    };
+    if let Some(path) = path {
+        let stroke = tiny_skia::Stroke { width, ..tiny_skia::Stroke::default() };
+        pix.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+    }
 }
 
 /// 画一个(可圆角)实心矩形。
@@ -154,12 +307,39 @@ fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<tiny_skia::Pat
     pb.finish()
 }
 
-/// 把一批字形合成进画布。
+/// 把一批字形合成进画布:先画整批的阴影(免得后字的影压在前字上),再画字形本体。
 fn draw_glyphs(pix: &mut Pixmap, opts: &RenderOptions, glyphs: &[PlacedGlyph]) {
     let pw = pix.width() as i32;
     let ph = pix.height() as i32;
     let pixels = pix.pixels_mut();
     opts.fonts.with_cache(|cache, fs| {
+        for g in glyphs {
+            let Some(sh) = g.shadow else { continue };
+            let Some(img) = cache.get_image(fs, g.cache_key) else { continue };
+            let (sx, sy) = (g.x.saturating_add(sh.dx), g.y.saturating_add(sh.dy));
+            if sh.blur <= 0.5 {
+                blit_glyph(pixels, pw, ph, img, sx, sy, sh.color);
+            } else {
+                // 软影:中心 + 八方环形多次合成逼近模糊(单字形代价可控,免逐字离屏)。
+                let r = (sh.blur * 0.6).round() as i32;
+                let ring: [(i32, i32); 8] = [
+                    (r, 0),
+                    (-r, 0),
+                    (0, r),
+                    (0, -r),
+                    (r * 7 / 10, r * 7 / 10),
+                    (-r * 7 / 10, r * 7 / 10),
+                    (r * 7 / 10, -r * 7 / 10),
+                    (-r * 7 / 10, -r * 7 / 10),
+                ];
+                let soft = Color { a: (sh.color.a as u16 * 2 / 5) as u8, ..sh.color };
+                blit_glyph(pixels, pw, ph, img, sx, sy, soft);
+                for (dx, dy) in ring {
+                    let faint = Color { a: (sh.color.a as u16 / 5) as u8, ..sh.color };
+                    blit_glyph(pixels, pw, ph, img, sx + dx, sy + dy, faint);
+                }
+            }
+        }
         for g in glyphs {
             if let Some(img) = cache.get_image(fs, g.cache_key) {
                 blit_glyph(pixels, pw, ph, img, g.x, g.y, g.color);
@@ -236,8 +416,9 @@ fn blend(dst: &mut PremultipliedColorU8, r: u8, g: u8, b: u8, a_color: u8, cov: 
 }
 
 /// 把一张 RGBA 图缩放贴入目标矩形。尺寸不同先重采样(缩小 Lanczos3 / 放大 CatmullRom)
-/// 再逐像素合成——最近邻在头像类下采样会出锯齿 / 摩尔纹。
-fn draw_image(pix: &mut Pixmap, img: &image::RgbaImage, x: f32, y: f32, w: f32, h: f32) {
+/// 再逐像素合成——最近邻在头像类下采样会出锯齿 / 摩尔纹。`radius > 0` 时圆角裁切:
+/// 角区像素按到圆角圆心的距离算覆盖率,乘进源 alpha(1px 软边抗锯齿)。
+fn draw_image(pix: &mut Pixmap, img: &image::RgbaImage, x: f32, y: f32, w: f32, h: f32, radius: f32) {
     if w <= 0.0 || h <= 0.0 {
         return;
     }
@@ -254,6 +435,7 @@ fn draw_image(pix: &mut Pixmap, img: &image::RgbaImage, x: f32, y: f32, w: f32, 
         resized = image::imageops::resize(img, dw, dh, filter);
         &resized
     };
+    let r = radius.min(w / 2.0).min(h / 2.0).max(0.0);
     let (pw, ph) = (pix.width() as i32, pix.height() as i32);
     let (ox, oy) = (x.round() as i32, y.round() as i32);
     let pixels = pix.pixels_mut();
@@ -268,9 +450,42 @@ fn draw_image(pix: &mut Pixmap, img: &image::RgbaImage, x: f32, y: f32, w: f32, 
                 continue;
             }
             let p = src.get_pixel(i as u32, j as u32).0;
-            blend(&mut pixels[py as usize * pw as usize + px as usize], p[0], p[1], p[2], 255, p[3]);
+            let mut a = p[3] as f32;
+            if r > 0.0 {
+                a *= corner_coverage(i as f32 + 0.5, j as f32 + 0.5, dw as f32, dh as f32, r);
+            }
+            blend(
+                &mut pixels[py as usize * pw as usize + px as usize],
+                p[0],
+                p[1],
+                p[2],
+                255,
+                a.round().clamp(0.0, 255.0) as u8,
+            );
         }
     }
+}
+
+/// 点 `(fx, fy)`(矩形局部坐标)在「圆角半径 `r` 的 `w×h` 圆角矩形」内的覆盖率:
+/// 角区按到圆心的距离给 1px 软边,其余区域恒 1。
+fn corner_coverage(fx: f32, fy: f32, w: f32, h: f32, r: f32) -> f32 {
+    // 离最近的水平/垂直边的「向内深度」;两向都浅于 r 才落在角区。
+    let cx = if fx < r {
+        r - fx
+    } else if fx > w - r {
+        fx - (w - r)
+    } else {
+        return 1.0;
+    };
+    let cy = if fy < r {
+        r - fy
+    } else if fy > h - r {
+        fy - (h - r)
+    } else {
+        return 1.0;
+    };
+    let d = (cx * cx + cy * cy).sqrt();
+    (r - d + 0.5).clamp(0.0, 1.0)
 }
 
 fn to_skia(c: Color) -> tiny_skia::Color {

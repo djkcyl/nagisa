@@ -69,15 +69,17 @@ mod paint;
 mod theme;
 
 pub use build::{
-    ColumnsBuilder, Doc, ImageBuilder, ListBuilder, ParaBuilder, StyleBuilder, TableBuilder,
+    BadgeBuilder, ColumnsBuilder, Doc, ImageBuilder, ListBuilder, ParaBuilder, StyleBuilder,
+    TableBuilder, WatermarkBuilder,
 };
 pub use error::{Error, Result};
 pub use font::FontHandle;
 pub use markup::parse as parse_markup;
 pub use model::ImageSource;
 pub use model::{
-    Align, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document, FontRole, Highlight,
-    Inline, Length, List, ListItem, ListKind, Table, TableGrid, TableStyle, TextStyle,
+    Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document,
+    FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind, Shadow,
+    Table, TableGrid, TableStyle, TextStyle, Watermark,
 };
 pub use theme::{Insets, OutputFormat, RenderOptions, Theme};
 

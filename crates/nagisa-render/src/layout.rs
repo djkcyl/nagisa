@@ -49,20 +49,65 @@ pub(crate) struct Layout {
 
 /// 一条绘制原语(坐标均为物理像素)。
 pub(crate) enum DisplayItem {
-    /// 一批字形(各自带颜色)。
+    /// 一批字形(各自带颜色,可带文字阴影)。
     Glyphs(Vec<PlacedGlyph>),
-    /// 实心(可圆角)矩形:背景 / 高亮 / 分割线 / 引用条 / 代码底 / 下划删除等。
-    /// `over=false` 在字形之前画(衬底:高亮 / 底色),`over=true` 在字形之后画(下划 / 删除)。
-    Rect { x: f32, y: f32, w: f32, h: f32, color: Color, radius: f32, over: bool },
-    /// 一张图(`src` 是 `Layout::images` 的下标)。
-    Image { x: f32, y: f32, w: f32, h: f32, src: usize },
+    /// 实心(可圆角)矩形:背景 / 高亮 / 分割线 / 引用条 / 代码底 / 角标底板 / 下划删除等。
+    /// 绘制层见 [`RectLayer`]。
+    Rect { x: f32, y: f32, w: f32, h: f32, color: Color, radius: f32, layer: RectLayer },
+    /// 一张图(`src` 是 `Layout::images` 的下标);`radius > 0` 时圆角裁切图面。
+    Image { x: f32, y: f32, w: f32, h: f32, src: usize, radius: f32 },
+    /// 投影:模糊圆角矩形,画在图片之前。
+    Shadow(ShadowItem),
+    /// 描边(可圆角)矩形:图片边框。画在图片之后、字形之前。
+    StrokeRect(StrokeItem),
 }
 
-/// 定位好的字形:缓存键(给 SwashCache 取位图)+ 笔位(x)/基线(y)+ 颜色。
+/// 投影绘制参数(均物理像素;`x`/`y` 已含偏移)。
+pub(crate) struct ShadowItem {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub radius: f32,
+    pub blur: f32,
+    pub color: Color,
+}
+
+/// 描边矩形绘制参数(图片边框;线宽沿路径居中)。
+pub(crate) struct StrokeItem {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub radius: f32,
+    pub width: f32,
+    pub color: Color,
+}
+
+/// 实心矩形的绘制层:`Under` 在图片与字形之前(衬底:高亮 / 底色 / 分割线),
+/// `Mid` 在图片之后、字形之前(角标底板),`Over` 在字形之后(下划 / 删除)。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RectLayer {
+    Under,
+    Mid,
+    Over,
+}
+
+/// 定位好的字形:缓存键(给 SwashCache 取位图)+ 笔位(x)/基线(y)+ 颜色 + 可选阴影。
 pub(crate) struct PlacedGlyph {
     pub cache_key: cosmic_text::CacheKey,
     pub x: i32,
     pub y: i32,
+    pub color: Color,
+    pub shadow: Option<GlyphShadow>,
+}
+
+/// 字形阴影(物理像素;由 `TextStyle::shadow` 按 scale 折算)。
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GlyphShadow {
+    pub dx: i32,
+    pub dy: i32,
+    pub blur: f32,
     pub color: Color,
 }
 
@@ -131,7 +176,7 @@ impl LayoutCtx<'_> {
                     h: th,
                     color: self.opts.theme.muted,
                     radius: 0.0,
-                    over: false,
+                    layer: RectLayer::Under,
                 });
                 self.y += th + base * sc * 0.45;
             }
@@ -213,7 +258,7 @@ impl LayoutCtx<'_> {
             h,
             color: self.opts.theme.accent,
             radius: bar_w / 2.0,
-            over: false,
+            layer: RectLayer::Under,
         });
         self.y += base * sc * 0.3;
     }
@@ -257,7 +302,7 @@ impl LayoutCtx<'_> {
             h: bg_h,
             color: self.opts.theme.code_bg,
             radius: 8.0 * sc,
-            over: false,
+            layer: RectLayer::Under,
         });
         self.y = y_bg + bg_h + base * sc * 0.4;
     }
@@ -329,7 +374,21 @@ impl LayoutCtx<'_> {
         };
         let src = self.images.len();
         self.images.push(rgba);
-        self.items.push(DisplayItem::Image { x: ix, y: self.y, w: dw, h: dh, src });
+        let radius = if bi.decor.radius.is_finite() { (bi.decor.radius * sc).max(0.0) } else { 0.0 };
+        // 投影先于图片入列(画在衬底之后、图片之前),位置已含偏移。
+        if let Some(sh) = &bi.decor.shadow {
+            self.items.push(DisplayItem::Shadow(ShadowItem {
+                x: ix + sh.dx * sc,
+                y: self.y + sh.dy * sc,
+                w: dw,
+                h: dh,
+                radius,
+                blur: (sh.blur * sc).max(0.0),
+                color: sh.color,
+            }));
+        }
+        self.items.push(DisplayItem::Image { x: ix, y: self.y, w: dw, h: dh, src, radius });
+        self.image_overlay(&bi.decor, ix, self.y, dw, dh, radius);
         self.y += dh;
 
         if let Some(cap) = &bi.caption {
@@ -342,6 +401,71 @@ impl LayoutCtx<'_> {
             self.y += h;
         }
         self.y += base * sc * 0.4;
+    }
+
+    /// 图面装饰层:边框(描边随圆角)/ 角标(圆角底板 + 文字)/ 水印(半透明文字)。
+    /// 全部叠在图面坐标系内,不动游标、不改布局尺寸。`radius` 已是物理像素。
+    fn image_overlay(
+        &mut self,
+        decor: &crate::model::ImageDecor,
+        ix: f32,
+        iy: f32,
+        dw: f32,
+        dh: f32,
+        radius: f32,
+    ) {
+        let (base, sc) = (self.opts.theme.base_size, self.sc);
+        let line_mult = self.opts.theme.line_height;
+
+        if let Some(b) = &decor.border {
+            self.items.push(DisplayItem::StrokeRect(StrokeItem {
+                x: ix,
+                y: iy,
+                w: dw,
+                h: dh,
+                radius,
+                width: (b.width * sc).max(1.0),
+                color: b.color,
+            }));
+        }
+
+        if let Some(badge) = &decor.badge {
+            let px = base * badge.size; // 逻辑字号
+            let inl = [Inline::Text {
+                text: badge.text.clone(),
+                style: TextStyle { color: Some(badge.fg), ..TextStyle::default() },
+            }];
+            let tw = measure_natural(&self.opts.fonts, &self.opts.theme, &inl, px, false, sc);
+            let line_h = px * sc * line_mult;
+            let (pad_x, pad_y) = (px * sc * 0.45, px * sc * 0.12);
+            let (bw, bh) = (tw + pad_x * 2.0, line_h + pad_y * 2.0);
+            let margin = px * sc * 0.5;
+            let (bx, by) = anchor_pos(badge.anchor, (ix, iy, dw, dh), (bw, bh), margin);
+            self.items.push(DisplayItem::Rect {
+                x: bx,
+                y: by,
+                w: bw,
+                h: bh,
+                color: badge.bg,
+                radius: bh * 0.25,
+                layer: RectLayer::Mid,
+            });
+            // +2px 余量防舍入折行;字形阶段天然画在 Mid 底板之上。
+            self.emit_text(&inl, Align::Left, px, false, bx + pad_x, by + pad_y, tw + 2.0);
+        }
+
+        if let Some(wm) = &decor.watermark {
+            let px = base * wm.size;
+            let inl = [Inline::Text {
+                text: wm.text.clone(),
+                style: TextStyle { color: Some(wm.color), ..TextStyle::default() },
+            }];
+            let tw = measure_natural(&self.opts.fonts, &self.opts.theme, &inl, px, false, sc);
+            let line_h = px * sc * line_mult;
+            let margin = px * sc * 0.5;
+            let (wx, wy) = anchor_pos(wm.anchor, (ix, iy, dw, dh), (tw, line_h), margin);
+            self.emit_text(&inl, Align::Left, px, false, wx, wy, tw + 2.0);
+        }
     }
 
     /// 显式并排栏:按 `weight` 瓜分(减去栏间距后的)可用宽,每栏独立排块,行高取最高栏(顶对齐)。
@@ -512,7 +636,7 @@ impl LayoutCtx<'_> {
                 h: row_bottom - row_top,
                 color: self.opts.theme.code_bg,
                 radius: 0.0,
-                over: false,
+                layer: RectLayer::Under,
             });
         }
         // 单元格背景填色(盖在表头浅底之上、字形之下)。
@@ -528,7 +652,7 @@ impl LayoutCtx<'_> {
                     h: row_bottom - row_top,
                     color: bg,
                     radius: 0.0,
-                    over: false,
+                    layer: RectLayer::Under,
                 });
             }
         }
@@ -661,6 +785,8 @@ struct SpanDeco {
     highlight: Option<Color>,
     code_bg: Option<Color>,
     ink: Color,
+    /// 文字阴影(已折算成物理像素);字形定位时带走。
+    shadow: Option<GlyphShadow>,
 }
 
 /// 用 cosmic-text 整形一段行内内容,产出定位好的字形、装饰矩形与该块高度(物理像素)。
@@ -712,6 +838,7 @@ fn shape_text(
                     x: xi + p.x,
                     y: (y_top + run.line_y).round() as i32 + p.y,
                     color,
+                    shadow: decos.get(g.metadata).and_then(|d| d.shadow),
                 });
             }
             collect_decos(&run, &decos, x_left, y_top, &mut deco_rects);
@@ -769,6 +896,12 @@ fn build_spans<'a>(
                     highlight: resolve_highlight(style.highlight, theme),
                     code_bg: None,
                     ink,
+                    shadow: style.shadow.map(|s| GlyphShadow {
+                        dx: (s.dx * sc).round() as i32,
+                        dy: (s.dy * sc).round() as i32,
+                        blur: (s.blur * sc).max(0.0),
+                        color: s.color,
+                    }),
                 });
             }
             Inline::Code(s) => {
@@ -789,6 +922,7 @@ fn build_spans<'a>(
                     highlight: None,
                     code_bg: Some(theme.code_bg),
                     ink: theme.code_text,
+                    shadow: None,
                 });
             }
             Inline::LineBreak => spans.push(("\n", default_attrs.clone())),
@@ -825,6 +959,30 @@ fn measure_natural(
         buf.shape_until_scroll(fs, false);
         buf.layout_runs().map(|r| r.line_w).fold(0.0, f32::max)
     })
+}
+
+/// 求覆盖件在图面内的停靠坐标:`frame` 是图面矩形 `(x, y, w, h)`,`size` 是覆盖件
+/// `(宽, 高)`,`m` 是离边距。图面放不下时夹回左上,贴边呈现。
+fn anchor_pos(
+    a: crate::model::Anchor,
+    frame: (f32, f32, f32, f32),
+    size: (f32, f32),
+    m: f32,
+) -> (f32, f32) {
+    use crate::model::Anchor;
+    let (ix, iy, dw, dh) = frame;
+    let (w, h) = size;
+    let x = match a {
+        Anchor::TopLeft | Anchor::BottomLeft => ix + m,
+        Anchor::TopRight | Anchor::BottomRight => ix + dw - w - m,
+        Anchor::Center => ix + (dw - w) / 2.0,
+    };
+    let y = match a {
+        Anchor::TopLeft | Anchor::TopRight => iy + m,
+        Anchor::BottomLeft | Anchor::BottomRight => iy + dh - h - m,
+        Anchor::Center => iy + (dh - h) / 2.0,
+    };
+    (x.max(ix), y.max(iy))
 }
 
 /// 把主题高亮策略解析成具体色。
@@ -876,7 +1034,7 @@ fn collect_decos(
                 h: line_h,
                 color: c,
                 radius: fs * 0.12,
-                over: false,
+                layer: RectLayer::Under,
             });
         }
         if let Some(c) = d.code_bg {
@@ -887,7 +1045,7 @@ fn collect_decos(
                 h: line_h * 0.84,
                 color: c,
                 radius: fs * 0.22,
-                over: false,
+                layer: RectLayer::Under,
             });
         }
         if d.underline {
@@ -898,7 +1056,7 @@ fn collect_decos(
                 h: (fs * 0.06).max(1.0),
                 color: d.ink,
                 radius: 0.0,
-                over: true,
+                layer: RectLayer::Over,
             });
         }
         if d.strike {
@@ -909,7 +1067,7 @@ fn collect_decos(
                 h: (fs * 0.06).max(1.0),
                 color: d.ink,
                 radius: 0.0,
-                over: true,
+                layer: RectLayer::Over,
             });
         }
     }
@@ -944,7 +1102,7 @@ fn from_cosmic(c: cosmic_text::Color) -> Color {
 
 /// 水平规线(以 `y` 为中线)。
 fn hrule(x: f32, y: f32, w: f32, line: f32, color: Color) -> DisplayItem {
-    DisplayItem::Rect { x, y: y - line / 2.0, w, h: line, color, radius: 0.0, over: false }
+    DisplayItem::Rect { x, y: y - line / 2.0, w, h: line, color, radius: 0.0, layer: RectLayer::Under }
 }
 
 /// 竖直规线(以 `vx` 为中线,从 `top` 到 `bottom`)。
@@ -956,6 +1114,6 @@ fn vrule(vx: f32, top: f32, bottom: f32, line: f32, color: Color) -> DisplayItem
         h: bottom - top,
         color,
         radius: 0.0,
-        over: false,
+        layer: RectLayer::Under,
     }
 }

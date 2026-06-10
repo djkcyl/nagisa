@@ -300,6 +300,7 @@ fn block_image(c: &str) -> Option<BlockImage> {
         width: None,
         align: Align::Left,
         caption: if alt.trim().is_empty() { None } else { Some(inline::parse_inlines(alt.trim())) },
+        decor: crate::model::ImageDecor::default(),
     })
 }
 

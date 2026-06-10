@@ -16,8 +16,9 @@
 use std::path::PathBuf;
 
 use crate::model::{
-    Align, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document, FontRole, Highlight,
-    Inline, Length, List, ListItem, ListKind, Table, TableStyle, TextStyle,
+    Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document,
+    FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind, Shadow,
+    Table, TableStyle, TextStyle, Watermark,
 };
 
 /// 文档 / 块序列构建器。也用作引用、列表项的内层块容器。
@@ -145,13 +146,19 @@ impl Doc {
         src: ImageSource,
         f: impl FnOnce(&mut ImageBuilder) -> R,
     ) -> &mut Self {
-        let mut ib = ImageBuilder { width: None, align: Align::Left, caption: None };
+        let mut ib = ImageBuilder {
+            width: None,
+            align: Align::Left,
+            caption: None,
+            decor: ImageDecor::default(),
+        };
         let _ = f(&mut ib);
         self.blocks.push(Block::Image(BlockImage {
             src,
             width: ib.width,
             align: ib.align,
             caption: ib.caption,
+            decor: ib.decor,
         }));
         self
     }
@@ -308,6 +315,18 @@ impl StyleBuilder {
     /// 字族角色。
     pub fn font(&mut self, role: FontRole) -> &mut Self {
         self.style.font = role;
+        self
+    }
+    /// 文字阴影(默认形态:下坠 2 逻辑像素、软化 6、黑 25%)。
+    pub fn shadow(&mut self) -> &mut Self {
+        self.style.shadow = Some(Shadow::default());
+        self
+    }
+    /// 文字阴影(自定形态:偏移/软化为逻辑像素,色为十六进制,非法色忽略整条)。
+    pub fn shadow_with(&mut self, dx: f32, dy: f32, blur: f32, hex: &str) -> &mut Self {
+        if let Some(color) = Color::hex(hex) {
+            self.style.shadow = Some(Shadow { dx, dy, blur: blur.max(0.0), color });
+        }
         self
     }
 }
@@ -545,6 +564,7 @@ pub struct ImageBuilder {
     width: Option<Length>,
     align: Align,
     caption: Option<Vec<Inline>>,
+    decor: ImageDecor,
 }
 
 impl ImageBuilder {
@@ -573,6 +593,120 @@ impl ImageBuilder {
         let mut pb = ParaBuilder::new();
         let _ = f(&mut pb);
         self.caption = Some(pb.inlines);
+        self
+    }
+
+    // ── 装饰层:角标 / 边框 / 水印 / 圆角 / 阴影(画在图面上,不改布局尺寸) ──
+
+    /// 角标(默认右上角、黑底白字),闭包微调:`im.badge("动图", |b| b.anchor(..).bg(..))`。
+    pub fn badge<R>(
+        &mut self,
+        text: impl Into<String>,
+        f: impl FnOnce(&mut BadgeBuilder) -> R,
+    ) -> &mut Self {
+        let mut bb = BadgeBuilder { badge: Badge::new(text) };
+        let _ = f(&mut bb);
+        self.decor.badge = Some(bb.badge);
+        self
+    }
+    /// 边框:线宽(逻辑像素)+ 十六进制色(非法色忽略整条);有圆角时随圆角描边。
+    pub fn border(&mut self, width: f32, hex: &str) -> &mut Self {
+        if width > 0.0 && width.is_finite() {
+            if let Some(color) = Color::hex(hex) {
+                self.decor.border = Some(ImageBorder { width, color });
+            }
+        }
+        self
+    }
+    /// 水印(默认右下角、白 40%),闭包微调:`im.watermark("abot", |w| w.anchor(..))`。
+    pub fn watermark<R>(
+        &mut self,
+        text: impl Into<String>,
+        f: impl FnOnce(&mut WatermarkBuilder) -> R,
+    ) -> &mut Self {
+        let mut wb = WatermarkBuilder { wm: Watermark::new(text) };
+        let _ = f(&mut wb);
+        self.decor.watermark = Some(wb.wm);
+        self
+    }
+    /// 圆角半径(逻辑像素):裁切图面四角。
+    pub fn rounded(&mut self, radius: f32) -> &mut Self {
+        if radius.is_finite() && radius > 0.0 {
+            self.decor.radius = radius;
+        }
+        self
+    }
+    /// 投影(默认形态:下坠 2 逻辑像素、软化 6、黑 25%)。
+    pub fn shadow(&mut self) -> &mut Self {
+        self.decor.shadow = Some(Shadow::default());
+        self
+    }
+    /// 投影(自定形态:偏移/软化为逻辑像素,色为十六进制,非法色忽略整条)。
+    pub fn shadow_with(&mut self, dx: f32, dy: f32, blur: f32, hex: &str) -> &mut Self {
+        if let Some(color) = Color::hex(hex) {
+            self.decor.shadow = Some(Shadow { dx, dy, blur: blur.max(0.0), color });
+        }
+        self
+    }
+}
+
+/// 角标微调构建器。
+pub struct BadgeBuilder {
+    badge: Badge,
+}
+
+impl BadgeBuilder {
+    /// 停靠角。
+    pub fn anchor(&mut self, a: Anchor) -> &mut Self {
+        self.badge.anchor = a;
+        self
+    }
+    /// 底板色(十六进制,可含 alpha;非法忽略)。
+    pub fn bg(&mut self, hex: &str) -> &mut Self {
+        if let Some(c) = Color::hex(hex) {
+            self.badge.bg = c;
+        }
+        self
+    }
+    /// 文字色(十六进制;非法忽略)。
+    pub fn fg(&mut self, hex: &str) -> &mut Self {
+        if let Some(c) = Color::hex(hex) {
+            self.badge.fg = c;
+        }
+        self
+    }
+    /// 字号倍率(相对基准;非法忽略)。
+    pub fn size(&mut self, mult: f32) -> &mut Self {
+        if mult.is_finite() && mult > 0.0 {
+            self.badge.size = mult;
+        }
+        self
+    }
+}
+
+/// 水印微调构建器。
+pub struct WatermarkBuilder {
+    wm: Watermark,
+}
+
+impl WatermarkBuilder {
+    /// 停靠处(四角或正中)。
+    pub fn anchor(&mut self, a: Anchor) -> &mut Self {
+        self.wm.anchor = a;
+        self
+    }
+    /// 颜色(十六进制,可含 alpha;非法忽略)。
+    pub fn color(&mut self, hex: &str) -> &mut Self {
+        if let Some(c) = Color::hex(hex) {
+            self.wm.color = c;
+        }
+        self
+    }
+    /// 字号倍率(相对基准;非法忽略)。
+    pub fn size(&mut self, mult: f32) -> &mut Self {
+        if mult.is_finite() && mult > 0.0 {
+            self.wm.size = mult;
+        }
         self
     }
 }

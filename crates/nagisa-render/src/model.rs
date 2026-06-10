@@ -186,6 +186,101 @@ pub struct BlockImage {
     pub align: Align,
     /// 图注(排在图下方,居中小字);`None` = 无。
     pub caption: Option<Vec<Inline>>,
+    /// 装饰层(角标/边框/水印/圆角/阴影);默认全无。
+    pub decor: ImageDecor,
+}
+
+/// 图片装饰层 —— 叠在图面上的附加呈现,**不改变布局尺寸**(阴影溢出照画)。
+#[derive(Clone, Debug, Default)]
+pub struct ImageDecor {
+    /// 角标:小标签贴在图的一角(如「动图」「GIF」)。
+    pub badge: Option<Badge>,
+    /// 边框:沿图片边缘描边(圆角时随圆角走)。
+    pub border: Option<ImageBorder>,
+    /// 水印:半透明文字叠在图面。
+    pub watermark: Option<Watermark>,
+    /// 圆角半径(逻辑像素,0 = 直角):裁切图面,边框/阴影随之。
+    pub radius: f32,
+    /// 投影;`None` = 无。
+    pub shadow: Option<Shadow>,
+}
+
+/// 图面上的锚点位置(角标 / 水印的停靠处)。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Anchor {
+    /// 左上。
+    TopLeft,
+    /// 右上(角标默认)。
+    #[default]
+    TopRight,
+    /// 左下。
+    BottomLeft,
+    /// 右下(水印默认)。
+    BottomRight,
+    /// 正中。
+    Center,
+}
+
+/// 图片角标:圆角底板 + 短文字,贴在图的一角。
+#[derive(Clone, Debug)]
+pub struct Badge {
+    /// 标签文字(宜短,如「动图」)。
+    pub text: String,
+    /// 停靠角。
+    pub anchor: Anchor,
+    /// 底板色(默认黑 72%)。
+    pub bg: Color,
+    /// 文字色(默认白)。
+    pub fg: Color,
+    /// 相对基准字号的倍率(默认 0.75)。
+    pub size: f32,
+}
+
+impl Badge {
+    /// 默认形态的角标(右上角、黑底白字)。
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            anchor: Anchor::TopRight,
+            bg: Color::rgba(0, 0, 0, 184),
+            fg: Color::rgb(255, 255, 255),
+            size: 0.75,
+        }
+    }
+}
+
+/// 图片边框(沿图缘描边;有圆角时随圆角)。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageBorder {
+    /// 线宽(逻辑像素)。
+    pub width: f32,
+    /// 颜色。
+    pub color: Color,
+}
+
+/// 图片水印:无底板的半透明文字。
+#[derive(Clone, Debug)]
+pub struct Watermark {
+    /// 水印文字。
+    pub text: String,
+    /// 停靠处。
+    pub anchor: Anchor,
+    /// 颜色(含 alpha;默认白 40%)。
+    pub color: Color,
+    /// 相对基准字号的倍率(默认 0.9)。
+    pub size: f32,
+}
+
+impl Watermark {
+    /// 默认形态的水印(右下角、白 40%)。
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            anchor: Anchor::BottomRight,
+            color: Color::rgba(255, 255, 255, 102),
+            size: 0.9,
+        }
+    }
 }
 
 /// 行内元素。
@@ -227,6 +322,8 @@ pub struct TextStyle {
     /// 链接文字(标记文本 `[文字](URL)` 的产物):无显式 `color` 时按主题强调色渲染。
     /// 图片不可点,URL 本身不展示。
     pub link: bool,
+    /// 文字阴影;`None` = 无。
+    pub shadow: Option<Shadow>,
 }
 
 impl Default for TextStyle {
@@ -241,7 +338,29 @@ impl Default for TextStyle {
             size: 1.0,
             font: FontRole::Sans,
             link: false,
+            shadow: None,
         }
+    }
+}
+
+/// 阴影(文字与图片共用):偏移 + 软化半径 + 颜色,尺寸皆**逻辑像素**。
+/// 不参与布局(不撑大占位),溢出块界照画。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    /// 水平偏移(右正)。
+    pub dx: f32,
+    /// 垂直偏移(下正)。
+    pub dy: f32,
+    /// 软化半径(0 = 实边)。
+    pub blur: f32,
+    /// 颜色(含 alpha,通常用半透明)。
+    pub color: Color,
+}
+
+impl Default for Shadow {
+    fn default() -> Self {
+        // 默认一枚朴素下坠软影。
+        Self { dx: 0.0, dy: 2.0, blur: 6.0, color: Color::rgba(0, 0, 0, 64) }
     }
 }
 

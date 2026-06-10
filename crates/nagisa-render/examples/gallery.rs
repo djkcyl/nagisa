@@ -180,6 +180,56 @@ fn main() {
                 })
                 .text(" 收尾。混在一行里也能各自定位。");
         })
+        .paragraph(|p| {
+            p.text("醒目标注:自适应椭圆圈 ")
+                .styled("缺货", |s| {
+                    s.ring_color("#dc2626");
+                })
+                .text(",定径正圆(单字双字同大)")
+                .styled("1", |s| {
+                    s.ring_radius(22.0);
+                })
+                .text(" 与 ")
+                .styled("10", |s| {
+                    s.ring_radius(22.0);
+                })
+                .text(",扁椭圆 ")
+                .styled("年度目标", |s| {
+                    s.ring_radii(58.0, 20.0).ring_stroke(2.0);
+                })
+                .text(";着重点 ")
+                .styled("这几个字", |s| {
+                    s.dot();
+                })
+                .text(" 与定径色点 ")
+                .styled("重点", |s| {
+                    s.dot_color("#0e9488").dot_radius(3.5);
+                })
+                .text(";圈与点都画进行距,不动布局。");
+        })
+        .paragraph(|p| {
+            p.text("逐字模式:着重号正字法 ")
+                .styled("字字有点", |s| {
+                    s.dot_each().dot_color("#dc2626");
+                })
+                .text(",一字一圈 ")
+                .styled("天天圈", |s| {
+                    s.ring_each().ring_color("#4c63b6");
+                })
+                .text(",逐字定径 ")
+                .styled("1 8 24", |s| {
+                    s.ring_each().ring_radius(20.0);
+                })
+                .text("(空白不标)。");
+        })
+        .paragraph(|p| {
+            p.align(Align::Center).text("边注:这行居中只按本句算").styled("当前", |s| {
+                s.aside_right().color("#8a8f98").size(0.8);
+            });
+            p.styled("▶", |s| {
+                s.aside_left().color("#0e9488");
+            });
+        })
         .build();
     write_png("out/inline.png", &inline);
 
@@ -315,6 +365,41 @@ fn main() {
         })
         .build();
     write_png("out/table-compact.png", &compact);
+
+    // 进度条样张:默认胶囊 / 自定义色与高度 / 直角细条 / 限宽对齐 / 0 与 1 两端。
+    let progress = Doc::new()
+        .heading(2, |h| {
+            h.text("进度条");
+        })
+        .paragraph(|p| {
+            p.text("默认:铺满内容宽,主题强调色,胶囊形。");
+        })
+        .progress(0.62, |_| {})
+        .paragraph(|p| {
+            p.text("自定义:高 16、靛蓝填充、浅灰底槽。");
+        })
+        .progress(0.43, |b| {
+            b.height(16.0).fill("#4c63b6").track("#dbe2ec");
+        })
+        .paragraph(|p| {
+            p.text("直角细条(radius 0,高 6):");
+        })
+        .progress(0.8, |b| {
+            b.height(6.0).radius(0.0);
+        })
+        .paragraph(|p| {
+            p.text("限宽 60% 居中:");
+        })
+        .progress(0.5, |b| {
+            b.width_percent(60.0).align(Align::Center).fill("#0e9488");
+        })
+        .paragraph(|p| {
+            p.text("两端:0(全槽)与 1(全满)。");
+        })
+        .progress(0.0, |_| {})
+        .progress(1.0, |_| {})
+        .build();
+    write_png("out/progress.png", &progress);
 
     // 综合样张:同一段 markup,亮 / 暗两套主题。
     write_markup("out/showcase-light.png", SHOWCASE, Theme::light());

@@ -121,6 +121,9 @@ fn render_pixmap(layout: &Layout, opts: &RenderOptions) -> Result<Pixmap> {
             DisplayItem::StrokeRect(s) => {
                 draw_stroke_rect(&mut pix, s);
             }
+            DisplayItem::Ellipse { cx, cy, rx, ry, width, color } => {
+                draw_ellipse(&mut pix, *cx, *cy, *rx, *ry, *width, *color);
+            }
             _ => {}
         }
     }
@@ -271,6 +274,26 @@ fn draw_stroke_rect(pix: &mut Pixmap, s: &StrokeItem) {
         let stroke = tiny_skia::Stroke { width, ..tiny_skia::Stroke::default() };
         pix.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
     }
+}
+
+/// 画一个描边椭圆(文字圈注):以 `(cx, cy)` 为心、`rx`/`ry` 为半轴的椭圆轮廓。
+fn draw_ellipse(pix: &mut Pixmap, cx: f32, cy: f32, rx: f32, ry: f32, width: f32, color: Color) {
+    if rx <= 0.0 || ry <= 0.0 || width <= 0.0 {
+        return;
+    }
+    let Some(rect) = Rect::from_xywh(cx - rx, cy - ry, rx * 2.0, ry * 2.0) else {
+        return;
+    };
+    let mut pb = PathBuilder::new();
+    pb.push_oval(rect);
+    let Some(path) = pb.finish() else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+    paint.anti_alias = true;
+    let stroke = tiny_skia::Stroke { width, ..tiny_skia::Stroke::default() };
+    pix.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 }
 
 /// 画一个(可圆角)实心矩形。

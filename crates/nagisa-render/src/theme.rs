@@ -97,7 +97,8 @@ impl Theme {
         }
     }
 
-    /// 亮 / 暗共享的非配色部分(字族 / 字号 / 行高 / 标题阶梯)。字族名对应内置字体。
+    /// 亮 / 暗共享的非配色部分(字族 / 字号 / 行高 / 标题阶梯)。黑体 / 等宽随包内置;
+    /// 衬线 / 楷体不内置,字族名是给使用方注入字体对的口径,缺则回退黑体。
     fn common() -> Self {
         Self {
             background: Color::rgb(0, 0, 0),
@@ -109,9 +110,9 @@ impl Theme {
             highlight: Color::rgb(0, 0, 0),
             border: Color::rgb(0, 0, 0),
             font_sans: "Noto Sans SC".to_string(), // 内置
-            font_serif: "Noto Serif SC".to_string(), // 内置(思源宋体)
+            font_serif: "Noto Serif SC".to_string(), // 不内置:使用方注入思源宋体即生效,缺则回退黑体
             font_mono: "JetBrains Mono".to_string(), // 内置(CJK 在等宽语境回退 Noto)
-            font_kai: "LXGW WenKai GB".to_string(),  // 内置(霞鹜文楷)
+            font_kai: "LXGW WenKai GB".to_string(),  // 不内置:使用方注入霞鹜文楷即生效,缺则回退黑体
             base_size: 30.0,
             line_height: 1.5,
             heading_scale: [2.0, 1.6, 1.35, 1.15, 1.0, 0.9],

@@ -72,8 +72,8 @@ mod paint;
 mod theme;
 
 pub use build::{
-    BadgeBuilder, ColumnsBuilder, Doc, ImageBuilder, ListBuilder, ParaBuilder, StyleBuilder,
-    TableBuilder, WatermarkBuilder,
+    BadgeBuilder, ColumnsBuilder, Doc, ImageBuilder, ListBuilder, ParaBuilder, ProgressBuilder,
+    StyleBuilder, TableBuilder, WatermarkBuilder,
 };
 pub use error::{Error, Result};
 pub use font::FontHandle;
@@ -81,8 +81,8 @@ pub use markup::parse as parse_markup;
 pub use model::ImageSource;
 pub use model::{
     Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document,
-    FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind, Shadow,
-    Table, TableGrid, TableStyle, TextStyle, Watermark,
+    DotMark, FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem,
+    ListKind, Progress, RingMark, Shadow, Table, TableGrid, TableStyle, TextStyle, Watermark,
 };
 pub use theme::{Insets, OutputFormat, PageChrome, RenderOptions, Theme};
 

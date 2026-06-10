@@ -49,6 +49,8 @@ pub enum Block {
     Columns(Columns),
     /// 表格。
     Table(Table),
+    /// 进度条。
+    Progress(Progress),
 }
 
 /// 表格。`cols` 给各列对齐与可选限宽(短于列数时,缺的列按默认:左对齐 + 自适应)。
@@ -143,6 +145,25 @@ pub struct Column {
     pub blocks: Vec<Block>,
     /// 宽度权重。
     pub weight: f32,
+}
+
+/// 进度条:`value` 按比例填充,余下露出底槽。
+#[derive(Clone, Debug)]
+pub struct Progress {
+    /// 进度值(0–1;越界与非有限值渲染时夹取)。
+    pub value: f32,
+    /// 条高(逻辑像素)。
+    pub height: f32,
+    /// 填充色;`None` = 主题强调色。
+    pub fill: Option<Color>,
+    /// 底槽色;`None` = 主题边框色。
+    pub track: Option<Color>,
+    /// 圆角半径(逻辑像素);`None` = 半高(胶囊形)。渲染时夹到半高以内。
+    pub radius: Option<f32>,
+    /// 条宽;`None` = 铺满内容宽。
+    pub width: Option<Length>,
+    /// 水平对齐(窄于内容宽时生效)。
+    pub align: Align,
 }
 
 /// 列表。
@@ -324,6 +345,52 @@ pub struct TextStyle {
     pub link: bool,
     /// 文字阴影;`None` = 无。
     pub shadow: Option<Shadow>,
+    /// 圈注:以这段文字为中心画一圈椭圆描边(醒目标注,如圈出日历上的某天;不参与
+    /// 布局尺寸,圈溢出到行距里)。
+    pub ring: Option<RingMark>,
+    /// 着重点:这段文字正下方一枚实心小点(中文「着重号」式标注;画进行距,不占高度)。
+    pub dot: Option<DotMark>,
+    /// 边注:这段文字挂到本行内容的外侧(左或右),**参与绘制、不参与布局**——行宽与
+    /// 居中 / 对齐都按其余内容算,边注不挤不偏(与圈注 / 着重点同一哲学)。适合
+    /// 「当前」「✓」这类行尾行首标记。多行段落里右边注跟末行、左边注跟首行;整段
+    /// 只有边注没有正文时按普通内容排(边注失去锚点)。
+    pub aside: Option<AsideSide>,
+}
+
+/// 边注的停靠侧。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AsideSide {
+    /// 行首左外侧。
+    Left,
+    /// 行尾右外侧。
+    Right,
+}
+
+/// 圈注参数。半径给定后圈的大小与文字宽窄无关——日历里「1」和「10」能圈出同样大的圈。
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RingMark {
+    /// 描边颜色;`None` = 跟随文字墨色。
+    pub color: Option<Color>,
+    /// 横向半径(逻辑像素);`None` = 按文字宽自适应。
+    pub rx: Option<f32>,
+    /// 纵向半径(逻辑像素);`None` 且 `rx` 有值 = 取 `rx`(正圆),都缺 = 按字高自适应。
+    pub ry: Option<f32>,
+    /// 线宽(逻辑像素);`None` = 0.07 倍字号。
+    pub width: Option<f32>,
+    /// 逐字圈:整段一字一圈(空白跳过),全自适应时缺省**正圆**;`false` = 整段一个圈
+    /// (范围圈,自适应为扁椭圆)。
+    pub each: bool,
+}
+
+/// 着重点参数。
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct DotMark {
+    /// 点色;`None` = 跟随文字墨色。
+    pub color: Option<Color>,
+    /// 点半径(逻辑像素);`None` = 0.09 倍字号。
+    pub radius: Option<f32>,
+    /// 逐字点:一字一点(中文着重号的正字法;空白跳过);`false` = 整段中线下一点。
+    pub each: bool,
 }
 
 impl Default for TextStyle {
@@ -339,6 +406,9 @@ impl Default for TextStyle {
             font: FontRole::Sans,
             link: false,
             shadow: None,
+            ring: None,
+            dot: None,
+            aside: None,
         }
     }
 }

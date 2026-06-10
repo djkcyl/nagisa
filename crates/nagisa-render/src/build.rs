@@ -17,8 +17,8 @@ use std::path::PathBuf;
 
 use crate::model::{
     Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document,
-    FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind, Shadow,
-    Table, TableStyle, TextStyle, Watermark,
+    FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind,
+    Progress, Shadow, Table, TableStyle, TextStyle, Watermark,
 };
 
 /// 文档 / 块序列构建器。也用作引用、列表项的内层块容器。
@@ -120,6 +120,26 @@ impl Doc {
             cols: tb.cols,
             style: tb.style,
         }));
+        self
+    }
+
+    /// 进度条:`value` 取 0–1(越界渲染时夹取),样式经闭包调
+    /// (`.height(..)` / `.fill(..)` / `.track(..)` / `.radius(..)` / `.width_px(..)` /
+    /// `.width_percent(..)` / `.align(..)`),全缺省即「铺满内容宽的胶囊条,主题强调色」。
+    pub fn progress<R>(&mut self, value: f32, f: impl FnOnce(&mut ProgressBuilder) -> R) -> &mut Self {
+        let mut pb = ProgressBuilder {
+            p: Progress {
+                value,
+                height: 10.0,
+                fill: None,
+                track: None,
+                radius: None,
+                width: None,
+                align: Align::Left,
+            },
+        };
+        let _ = f(&mut pb);
+        self.blocks.push(Block::Progress(pb.p));
         self
     }
 
@@ -322,7 +342,84 @@ impl StyleBuilder {
         self.style.font = role;
         self
     }
+    /// 圈注:以这段文字为中心画一圈椭圆描边(缺省按文字宽窄自适应、颜色跟随墨色;
+    /// 不占布局尺寸,圈溢出到行距)。尺寸经 [`ring_radius`](Self::ring_radius) /
+    /// [`ring_radii`](Self::ring_radii) 给定后与文字宽窄无关。
+    pub fn ring(&mut self) -> &mut Self {
+        self.style.ring.get_or_insert_default();
+        self
+    }
+    /// 圈注描边色(十六进制;非法忽略,跟随墨色)。
+    pub fn ring_color(&mut self, hex: &str) -> &mut Self {
+        let r = self.style.ring.get_or_insert_default();
+        r.color = Color::hex(hex).or(r.color);
+        self
+    }
+    /// 圈注定径:**正圆**,半径 `r`(逻辑像素)——多字与单字圈出同样大的圈。
+    pub fn ring_radius(&mut self, r: f32) -> &mut Self {
+        self.ring_radii(r, r)
+    }
+    /// 圈注定径:**椭圆**,横/纵半径(逻辑像素)。非有限或 ≤ 0 的分量忽略(保持自适应)。
+    pub fn ring_radii(&mut self, rx: f32, ry: f32) -> &mut Self {
+        let r = self.style.ring.get_or_insert_default();
+        if rx.is_finite() && rx > 0.0 {
+            r.rx = Some(rx);
+        }
+        if ry.is_finite() && ry > 0.0 {
+            r.ry = Some(ry);
+        }
+        self
+    }
+    /// 圈注线宽(逻辑像素;非有限或 ≤ 0 忽略,保持 0.07 倍字号缺省)。
+    pub fn ring_stroke(&mut self, w: f32) -> &mut Self {
+        let r = self.style.ring.get_or_insert_default();
+        if w.is_finite() && w > 0.0 {
+            r.width = Some(w);
+        }
+        self
+    }
+    /// 逐字圈:整段一字一圈(空白跳过),未定径时按字取**正圆**。缺省是整段一个圈
+    /// (范围圈,自适应为扁椭圆)。
+    pub fn ring_each(&mut self) -> &mut Self {
+        self.style.ring.get_or_insert_default().each = true;
+        self
+    }
+    /// 着重点:这段文字正下方一枚实心小点(颜色跟随墨色;画进行距,不占高度)。
+    pub fn dot(&mut self) -> &mut Self {
+        self.style.dot.get_or_insert_default();
+        self
+    }
+    /// 着重点颜色(十六进制;非法忽略,跟随墨色)。
+    pub fn dot_color(&mut self, hex: &str) -> &mut Self {
+        let d = self.style.dot.get_or_insert_default();
+        d.color = Color::hex(hex).or(d.color);
+        self
+    }
+    /// 着重点半径(逻辑像素;非有限或 ≤ 0 忽略,保持 0.09 倍字号缺省)。
+    pub fn dot_radius(&mut self, r: f32) -> &mut Self {
+        let d = self.style.dot.get_or_insert_default();
+        if r.is_finite() && r > 0.0 {
+            d.radius = Some(r);
+        }
+        self
+    }
+    /// 逐字点:一字一点(中文着重号的正字法;空白跳过)。缺省是整段中线下一点。
+    pub fn dot_each(&mut self) -> &mut Self {
+        self.style.dot.get_or_insert_default().each = true;
+        self
+    }
     /// 文字阴影(默认形态:下坠 2 逻辑像素、软化 6、黑 25%)。
+    /// 边注挂右:这段挂到本行内容的右外侧,参与绘制不参与布局——居中 / 对齐按其余
+    /// 内容算,边注不挤不偏(「当前」「✓」这类行尾标记用)。
+    pub fn aside_right(&mut self) -> &mut Self {
+        self.style.aside = Some(crate::model::AsideSide::Right);
+        self
+    }
+    /// 边注挂左:同 [`aside_right`](Self::aside_right),停靠行首左外侧。
+    pub fn aside_left(&mut self) -> &mut Self {
+        self.style.aside = Some(crate::model::AsideSide::Left);
+        self
+    }
     pub fn shadow(&mut self) -> &mut Self {
         self.style.shadow = Some(Shadow::default());
         self
@@ -531,6 +628,49 @@ impl ColumnsBuilder {
         let mut inner = Doc::new();
         let _ = f(&mut inner);
         self.cols.push(Column { blocks: inner.blocks, weight });
+        self
+    }
+}
+
+/// 进度条构建器([`Doc::progress`] 的闭包参数)。
+pub struct ProgressBuilder {
+    p: Progress,
+}
+
+impl ProgressBuilder {
+    /// 条高(逻辑像素,默认 10)。
+    pub fn height(&mut self, h: f32) -> &mut Self {
+        self.p.height = h;
+        self
+    }
+    /// 填充色(默认主题强调色)。
+    pub fn fill(&mut self, hex: &str) -> &mut Self {
+        self.p.fill = Color::hex(hex).or(self.p.fill);
+        self
+    }
+    /// 底槽色(默认主题边框色)。
+    pub fn track(&mut self, hex: &str) -> &mut Self {
+        self.p.track = Color::hex(hex).or(self.p.track);
+        self
+    }
+    /// 圆角半径(逻辑像素,默认半高即胶囊形;0 = 直角)。
+    pub fn radius(&mut self, r: f32) -> &mut Self {
+        self.p.radius = Some(r);
+        self
+    }
+    /// 条宽(绝对逻辑像素;默认铺满内容宽)。
+    pub fn width_px(&mut self, px: f32) -> &mut Self {
+        self.p.width = Some(Length::Px(px));
+        self
+    }
+    /// 条宽(内容宽的百分比)。
+    pub fn width_percent(&mut self, pct: f32) -> &mut Self {
+        self.p.width = Some(Length::Percent(pct));
+        self
+    }
+    /// 水平对齐(窄于内容宽时生效)。
+    pub fn align(&mut self, a: Align) -> &mut Self {
+        self.p.align = a;
         self
     }
 }

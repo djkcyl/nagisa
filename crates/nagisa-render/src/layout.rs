@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use crate::model::{
     Align, Block, BlockImage, Cell, Color, Column, Columns, Document, FontRole, ImageSource,
-    Inline, Length, List, ListKind, Table, TextStyle,
+    Inline, Length, List, ListKind, Progress, Table, TextStyle,
 };
 use crate::theme::{RenderOptions, Theme};
 
@@ -60,6 +60,8 @@ pub(crate) enum DisplayItem {
     Shadow(ShadowItem),
     /// 描边(可圆角)矩形:图片边框。画在图片之后、字形之前。
     StrokeRect(StrokeItem),
+    /// 描边椭圆:文字圈注。画在图片之后、字形之前(与 [`Self::StrokeRect`] 同层)。
+    Ellipse { cx: f32, cy: f32, rx: f32, ry: f32, width: f32, color: Color },
 }
 
 /// 投影绘制参数(均物理像素;`x`/`y` 已含偏移)。
@@ -214,6 +216,7 @@ impl LayoutCtx<'_> {
             Block::Image(bi) => self.image(bi, x, w),
             Block::Columns(c) => self.columns(c, x, w),
             Block::Table(t) => self.table(t, x, w),
+            Block::Progress(p) => self.progress(p, x, w),
         }
     }
 
@@ -721,6 +724,59 @@ impl LayoutCtx<'_> {
         self.y += base * sc * 0.3;
     }
 
+    /// 进度条:底槽 + 按 `value` 比例的填充,同半径两层圆角矩形;窄于内容宽时按对齐定位。
+    fn progress(&mut self, p: &Progress, x: f32, w: f32) {
+        let (base, sc) = (self.opts.theme.base_size, self.sc);
+        let bw = match p.width {
+            Some(Length::Px(v)) => (safe_px(v) * sc).clamp(1.0, w.max(1.0)),
+            Some(Length::Percent(pct)) => {
+                let pct = if pct.is_finite() { pct.clamp(0.0, 100.0) } else { 100.0 };
+                (w * pct / 100.0).clamp(1.0, w.max(1.0))
+            }
+            None => w.max(1.0),
+        };
+        let bx = match p.align {
+            Align::Center => x + (w - bw) / 2.0,
+            Align::Right => x + w - bw,
+            Align::Left | Align::Justify => x,
+        };
+        let h = safe_px(p.height) * sc;
+        // 显式半径只需非负有限(0 = 直角),上限由半高封顶;缺省即胶囊。
+        let r = match p.radius {
+            Some(v) if v.is_finite() && v > 0.0 => (v * sc).min(h / 2.0),
+            Some(_) => 0.0,
+            None => h / 2.0,
+        };
+        let value = if p.value.is_finite() { p.value.clamp(0.0, 1.0) } else { 0.0 };
+
+        self.y += base * sc * 0.3;
+        let track = p.track.unwrap_or(self.opts.theme.border);
+        self.items.push(DisplayItem::Rect {
+            x: bx,
+            y: self.y,
+            w: bw,
+            h,
+            color: track,
+            radius: r,
+            layer: RectLayer::Under,
+        });
+        if value > 0.0 {
+            // 填充不短于两端圆角(更短的圆角矩形画出来破相),封顶条宽。
+            let fw = (bw * value).max((2.0 * r).min(bw));
+            let fill = p.fill.unwrap_or(self.opts.theme.accent);
+            self.items.push(DisplayItem::Rect {
+                x: bx,
+                y: self.y,
+                w: fw,
+                h,
+                color: fill,
+                radius: r,
+                layer: RectLayer::Under,
+            });
+        }
+        self.y += h + base * sc * 0.55;
+    }
+
     /// 排一行(表头或数据行):各单元格在列内按对齐排,行高取最高;表头浅底(可关)+ 单元格背景。
     /// 不画分隔线(交给 [`Self::table`] 统一按开关画);游标推进到行底。
     #[allow(clippy::too_many_arguments)]
@@ -909,9 +965,30 @@ struct SpanDeco {
     strike: bool,
     highlight: Option<Color>,
     code_bg: Option<Color>,
+    /// 圈注(颜色已解析、定径/线宽已折算物理像素;`None` = 无)。
+    ring: Option<RingDeco>,
+    /// 着重点(同上)。
+    dot: Option<DotDeco>,
     ink: Color,
     /// 文字阴影(已折算成物理像素);字形定位时带走。
     shadow: Option<GlyphShadow>,
+}
+
+/// 已解析的圈注:`rx`/`ry`/`width` 为物理像素,`None` 分量在绘制时按字号自适应;
+/// `each` = 逐字一圈。
+struct RingDeco {
+    color: Color,
+    rx: Option<f32>,
+    ry: Option<f32>,
+    width: Option<f32>,
+    each: bool,
+}
+
+/// 已解析的着重点:`radius` 为物理像素,`None` 在绘制时按字号自适应;`each` = 逐字一点。
+struct DotDeco {
+    color: Color,
+    radius: Option<f32>,
+    each: bool,
 }
 
 /// 用 cosmic-text 整形一段行内内容,产出定位好的字形、装饰矩形与该块高度(物理像素)。
@@ -937,7 +1014,33 @@ fn shape_text(
         .metrics(Metrics::new(default_px, default_px * line_mult))
         .metadata(usize::MAX);
 
-    let (spans, decos) = build_spans(inlines, theme, base_logical, base_bold, sc, &default_attrs);
+    // 边注与正文分离:边注不进主 buffer——行宽与居中 / 对齐都按正文算,边注另行
+    // 整形后挂到首 / 末行内容盒外侧。整段只有边注没有正文时,边注失去锚点,按普通
+    // 内容排(aside 标记被整形忽略,不致丢字)。
+    use crate::model::AsideSide;
+    let side_of = |i: &Inline| match i {
+        Inline::Text { style, .. } => style.aside,
+        _ => None,
+    };
+    let mut main_part: Vec<Inline> = Vec::new();
+    let mut asides: [Vec<Inline>; 2] = [Vec::new(), Vec::new()]; // [左, 右]
+    if inlines.iter().any(|i| side_of(i).is_some()) {
+        for i in inlines {
+            match side_of(i) {
+                Some(AsideSide::Left) => asides[0].push(i.clone()),
+                Some(AsideSide::Right) => asides[1].push(i.clone()),
+                None => main_part.push(i.clone()),
+            }
+        }
+        if main_part.is_empty() {
+            main_part = inlines.to_vec();
+            asides = [Vec::new(), Vec::new()];
+        }
+    } else {
+        main_part = inlines.to_vec();
+    }
+
+    let (spans, decos) = build_spans(&main_part, theme, base_logical, base_bold, sc, &default_attrs);
 
     fonts.with_system(|fs| {
         let mut buf = Buffer::new(fs, Metrics::new(default_px, default_px * line_mult));
@@ -954,7 +1057,11 @@ fn shape_text(
         let mut glyphs = Vec::new();
         let mut deco_rects = Vec::new();
         let mut height = 0.0f32;
+        // 首 / 末行的基线与内容盒横向边界(对齐偏移已含在字形坐标里),给边注锚定用。
+        let mut first_line: Option<(f32, f32)> = None; // (line_y, 内容左缘)
+        let mut last_line: Option<(f32, f32)> = None; // (line_y, 内容右缘)
         for run in buf.layout_runs() {
+            let (mut lo, mut hi) = (f32::MAX, f32::MIN);
             for g in run.glyphs {
                 let p = g.physical((0.0, 0.0), 1.0);
                 let color = g.color_opt.map(from_cosmic).unwrap_or(theme.text);
@@ -965,9 +1072,57 @@ fn shape_text(
                     color,
                     shadow: decos.get(g.metadata).and_then(|d| d.shadow),
                 });
+                lo = lo.min(g.x);
+                hi = hi.max(g.x + g.w);
             }
             collect_decos(&run, &decos, x_left, y_top, &mut deco_rects);
             height = height.max(run.line_top + run.line_height);
+            if !run.glyphs.is_empty() {
+                first_line.get_or_insert((run.line_y, lo));
+                last_line = Some((run.line_y, hi));
+            }
+        }
+
+        // 边注:各侧单独整形(不限宽不换行),左挂首行、右挂末行,基线对齐锚行,
+        // 与正文隔半个基准字号。只画不占位,溢出画布的部分由绘制层裁掉。
+        let gap = default_px * 0.5;
+        for (k, aside) in asides.iter().enumerate() {
+            if aside.is_empty() {
+                continue;
+            }
+            let anchor = if k == 0 { first_line } else { last_line };
+            let Some((anchor_y, edge)) = anchor else { continue };
+            let (aspans, adecos) =
+                build_spans(aside, theme, base_logical, base_bold, sc, &default_attrs);
+            let mut abuf = Buffer::new(fs, Metrics::new(default_px, default_px * line_mult));
+            abuf.set_size(None, None);
+            abuf.set_rich_text(
+                aspans.iter().map(|(t, a)| (*t, a.clone())),
+                &default_attrs,
+                Shaping::Advanced,
+                None,
+            );
+            abuf.shape_until_scroll(fs, false);
+            let aw = abuf.layout_runs().map(|r| r.line_w).fold(0.0, f32::max);
+            let ax_left = if k == 0 { x_left + edge - gap - aw } else { x_left + edge + gap };
+            let axi = ax_left.round() as i32;
+            // 首行基线对齐锚行基线;边注自带换行时后续行顺延其下。
+            let Some(first_y) = abuf.layout_runs().next().map(|r| r.line_y) else { continue };
+            let ay_top = y_top + anchor_y - first_y;
+            for run in abuf.layout_runs() {
+                for g in run.glyphs {
+                    let p = g.physical((0.0, 0.0), 1.0);
+                    let color = g.color_opt.map(from_cosmic).unwrap_or(theme.text);
+                    glyphs.push(PlacedGlyph {
+                        cache_key: p.cache_key,
+                        x: axi + p.x,
+                        y: (ay_top + run.line_y).round() as i32 + p.y,
+                        color,
+                        shadow: adecos.get(g.metadata).and_then(|d| d.shadow),
+                    });
+                }
+                collect_decos(&run, &adecos, ax_left, ay_top, &mut deco_rects);
+            }
         }
         (glyphs, deco_rects, height)
     })
@@ -1020,6 +1175,18 @@ fn build_spans<'a>(
                     strike: style.strike,
                     highlight: resolve_highlight(style.highlight, theme),
                     code_bg: None,
+                    ring: style.ring.map(|m| RingDeco {
+                        color: m.color.unwrap_or(ink),
+                        rx: m.rx.map(|v| safe_px(v) * sc),
+                        ry: m.ry.map(|v| safe_px(v) * sc),
+                        width: m.width.map(|v| safe_px(v) * sc),
+                        each: m.each,
+                    }),
+                    dot: style.dot.map(|m| DotDeco {
+                        color: m.color.unwrap_or(ink),
+                        radius: m.radius.map(|v| safe_px(v) * sc),
+                        each: m.each,
+                    }),
                     ink,
                     shadow: style.shadow.map(|s| GlyphShadow {
                         dx: (s.dx * sc).round() as i32,
@@ -1046,6 +1213,8 @@ fn build_spans<'a>(
                     strike: false,
                     highlight: None,
                     code_bg: Some(theme.code_bg),
+                    ring: None,
+                    dot: None,
                     ink: theme.code_text,
                     shadow: None,
                 });
@@ -1136,6 +1305,7 @@ fn collect_decos(
     while i < glyphs.len() {
         let m = glyphs[i].metadata;
         let (mut x0, mut x1, mut fs) = (f32::MAX, f32::MIN, glyphs[i].font_size);
+        let seg_start = i;
         let mut j = i;
         while j < glyphs.len() && glyphs[j].metadata == m {
             let g = &glyphs[j];
@@ -1145,6 +1315,7 @@ fn collect_decos(
             j += 1;
         }
         i = j;
+        let seg = &glyphs[seg_start..j];
         let Some(d) = decos.get(m) else { continue };
         let ax = x_left + x0;
         let aw = (x1 - x0).max(0.0);
@@ -1194,6 +1365,64 @@ fn collect_decos(
                 radius: 0.0,
                 layer: RectLayer::Over,
             });
+        }
+        // 标注盒序列:范围模式 = 整段一盒;逐字模式 = 每个字形簇一盒(空白簇跳过)。
+        let mark_boxes = |each: bool| -> Vec<(f32, f32)> {
+            if each {
+                seg.iter()
+                    .filter(|g| {
+                        run.text.get(g.start..g.end).is_none_or(|t| !t.trim().is_empty())
+                    })
+                    .map(|g| (x_left + g.x, g.w))
+                    .collect()
+            } else {
+                vec![(ax, aw)]
+            }
+        };
+        if let Some(r) = &d.ring {
+            // 椭圆描边以盒中心为心:定径分量直接用(与文字宽窄无关,多字单字同大),
+            // 缺的分量按盒自适应(横向包住盒、纵向盖住字高);只给 rx 即正圆。
+            // 画在字形之前,溢出到行距里、不动布局。
+            for (bx, bw) in mark_boxes(r.each) {
+                let cx = bx + bw / 2.0;
+                let cy = baseline - fs * 0.35;
+                let auto_rx = (bw / 2.0 + fs * 0.30).max(fs * 0.55);
+                let (rx, ry) = match (r.rx, r.ry) {
+                    (Some(rx), Some(ry)) => (rx, ry),
+                    (Some(rx), None) => (rx, rx),
+                    (None, Some(ry)) => (auto_rx, ry),
+                    // 全自适应:逐字圈正圆(半径取横/纵需求大者——圈单字理应是圆,
+                    // 不随汉字全角/数字半角的字宽变形),范围圈按整段做扁椭圆。
+                    (None, None) if r.each => {
+                        let rr = auto_rx.max(fs * 0.62);
+                        (rr, rr)
+                    }
+                    (None, None) => (auto_rx, fs * 0.62),
+                };
+                out.push(DisplayItem::Ellipse {
+                    cx,
+                    cy,
+                    rx,
+                    ry,
+                    width: r.width.unwrap_or((fs * 0.07).max(1.0)),
+                    color: r.color,
+                });
+            }
+        }
+        if let Some(p) = &d.dot {
+            // 着重点:盒中线正下方一枚实心圆(全圆角矩形即圆),落在行距里。
+            let r = p.radius.unwrap_or((fs * 0.09).max(1.5));
+            for (bx, bw) in mark_boxes(p.each) {
+                out.push(DisplayItem::Rect {
+                    x: bx + bw / 2.0 - r,
+                    y: baseline + fs * 0.16,
+                    w: r * 2.0,
+                    h: r * 2.0,
+                    color: p.color,
+                    radius: r,
+                    layer: RectLayer::Over,
+                });
+            }
         }
     }
 }

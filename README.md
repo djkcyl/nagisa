@@ -33,8 +33,8 @@ flowchart LR
 
 ```toml
 [dependencies]
-nagisa = "0.2"                                     # 默认含 onebot + milky 两套适配器
-# nagisa = { version = "0.2", features = ["log"] } # 额外开事件日志（控制台 / 文件渲染）
+nagisa = "0.4"                                               # 默认含 onebot + milky 两套适配器
+# nagisa = { version = "0.4", features = ["log", "render"] } # 可选：事件日志 / 排版引擎（文档 → 图片）
 ```
 
 或一行 `cargo add nagisa`。另需一个已登录 QQ 的协议端（[Lagrange](https://github.com/LagrangeDev/Lagrange.Core) / NapCat / LLOneBot 等）在外部运行，Nagisa 负责连上它。
@@ -279,7 +279,7 @@ OneBot 动作走同连接 echo 关联（WS），或把动作名接在 `api_url` 
 
 `log` feature 提供：`init()` 统一初始化（控制台 + 可选文件，返回的 `LogGuard` 须持有到退出；`RUST_LOG` 优先于配置）、`EventLog` 观察者（把事件渲染成可读日志行，含出站消息回显、名称缓存、撤回预览）、`LogBus`（log-as-event 广播）。
 
-`render` feature 提供：`nagisa::render` 把标记文本（类 Markdown + 扩展）或 Rust 构建器（`Doc`）的文档排版成图片字节——标题 / 段落 / 富文本样式（含文字阴影）/ 链接 / 列表（含任务列表）/ 引用 / 代码 / 图片（含角标 / 边框 / 水印 / 圆角 / 投影装饰层）/ 多栏 / 表格、页眉页脚（品牌条：富文本 / 左右分栏 / 满幅色带）、CJK+拉丁+emoji 混排、亮暗主题、内置字体（黑体 + 等宽，细 / 常规 / 粗真字重，压缩内嵌；衬线 / 楷体角色自备字体即生效）；与协议解耦，出图后经 `reply.image_bytes(..)` 发出。详见 crate rustdoc。
+`render` feature 提供：`nagisa::render` 把标记文本（类 Markdown + 扩展）或 Rust 构建器（`Doc`）的文档排版成图片字节——标题 / 段落 / 富文本样式（含文字阴影、圈注 / 着重点、边注）/ 链接 / 列表（含任务列表）/ 引用 / 代码 / 图片（含角标 / 边框 / 水印 / 圆角 / 投影装饰层）/ 多栏 / 表格 / 进度条、页眉页脚（品牌条：富文本 / 左右分栏 / 满幅色带）、CJK+拉丁+emoji 混排、亮暗主题、内置字体（黑体 + 等宽，细 / 常规 / 粗真字重，压缩内嵌；衬线 / 楷体角色自备字体即生效）；与协议解耦，出图后经 `reply.image_bytes(..)` 发出。详见 crate rustdoc。
 
 ## Workspace crate 地图
 

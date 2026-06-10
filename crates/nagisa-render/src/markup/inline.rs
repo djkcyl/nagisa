@@ -241,6 +241,50 @@ fn apply_attrs(mut st: TextStyle, attrs: &str) -> TextStyle {
                         }
                     }
                 }
+                // 圈注:`{ring=#e00}` 描边色;`ring-radius`(正圆)/`ring-rx`/`ring-ry`
+                // 定径、`ring-stroke` 线宽(逻辑像素;非法分量忽略)。
+                "ring" => {
+                    st.ring.get_or_insert_default().color = Color::hex(&v);
+                }
+                "ring-radius" => {
+                    if let Some(r) = parse_len(&v) {
+                        let m = st.ring.get_or_insert_default();
+                        m.rx = Some(r);
+                        m.ry = Some(r);
+                    }
+                }
+                "ring-rx" => {
+                    if let Some(r) = parse_len(&v) {
+                        st.ring.get_or_insert_default().rx = Some(r);
+                    }
+                }
+                "ring-ry" => {
+                    if let Some(r) = parse_len(&v) {
+                        st.ring.get_or_insert_default().ry = Some(r);
+                    }
+                }
+                "ring-stroke" => {
+                    if let Some(w) = parse_len(&v) {
+                        st.ring.get_or_insert_default().width = Some(w);
+                    }
+                }
+                // 着重点:`{dot=#e00}` 点色;`dot-radius` 点半径。
+                "dot" => {
+                    st.dot.get_or_insert_default().color = Color::hex(&v);
+                }
+                "dot-radius" => {
+                    if let Some(r) = parse_len(&v) {
+                        st.dot.get_or_insert_default().radius = Some(r);
+                    }
+                }
+                // 边注:`{aside=left|right}` 指定停靠侧(非法值忽略)。
+                "aside" => {
+                    st.aside = match v.as_str() {
+                        "left" => Some(crate::model::AsideSide::Left),
+                        "right" => Some(crate::model::AsideSide::Right),
+                        _ => st.aside,
+                    }
+                }
                 _ => {}
             },
             Attr::Flag(f) => match f.as_str() {
@@ -249,9 +293,29 @@ fn apply_attrs(mut st: TextStyle, attrs: &str) -> TextStyle {
                 "italic" => st.italic = true,
                 "underline" => st.underline = true,
                 "strike" => st.strike = true,
+                // 圈注 / 着重点(全缺省:自适应尺寸,颜色跟随墨色);`-each` = 逐字。
+                "ring" => {
+                    st.ring.get_or_insert_default();
+                }
+                "ring-each" => {
+                    st.ring.get_or_insert_default().each = true;
+                }
+                "dot" => {
+                    st.dot.get_or_insert_default();
+                }
+                "dot-each" => {
+                    st.dot.get_or_insert_default().each = true;
+                }
+                // 边注(缺省挂右)。
+                "aside" => st.aside = Some(crate::model::AsideSide::Right),
                 _ => {}
             },
         }
     }
     st
+}
+
+/// 解析一个长度值(逻辑像素):非有限或 ≤ 0 视作非法,返回 `None`。
+fn parse_len(v: &str) -> Option<f32> {
+    v.parse::<f32>().ok().filter(|x| x.is_finite() && *x > 0.0)
 }

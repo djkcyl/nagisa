@@ -429,9 +429,13 @@ impl LayoutCtx<'_> {
             })
             .collect();
         let hairline = (1.0 * sc).max(1.0);
+        // 行盒的半行距(行高超出字号的部分,上下各摊一半):墨迹并不顶着行盒边沿,
+        // 对称留白要按**墨迹**算,从间距里扣掉它。
+        let line_pad = px * sc * (self.opts.theme.line_height - 1.0) / 2.0;
         if top {
+            // 字带在「画布顶 → 细线」之间上下居中:字下间距取与顶边距相同(至少 0.35em)。
             let h = self.emit_text(&inl, c.align, px, false, x, self.y, w);
-            self.y += h + base * sc * 0.35;
+            self.y += h + (self.opts.padding.top * sc - line_pad).max(base * sc * 0.35);
             if c.rule {
                 self.items.push(DisplayItem::Rect {
                     x,
@@ -457,8 +461,11 @@ impl LayoutCtx<'_> {
                     radius: 0.0,
                     layer: RectLayer::Under,
                 });
-                self.y += hairline + base * sc * 0.35;
+                self.y += hairline;
             }
+            // 字带在「细线 → 画布底」之间上下居中:线下间距取与底边距相同(至少 0.35em)
+            // ——否则字吊在线下、底下一大段留白,观感像没对齐。
+            self.y += (self.opts.padding.bottom * sc - line_pad).max(base * sc * 0.35);
             let h = self.emit_text(&inl, c.align, px, false, x, self.y, w);
             self.y += h;
         }

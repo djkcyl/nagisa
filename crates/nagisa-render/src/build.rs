@@ -436,6 +436,11 @@ impl TableBuilder {
         self.style.pad_y = Some(px.max(0.0));
         self
     }
+    /// 拉伸铺满可用宽(富余宽度按比例分给自适应列;全固定列则整体等比放大)。
+    pub fn expand(&mut self) -> &mut Self {
+        self.style.expand = true;
+        self
+    }
     /// 外框线开关。
     pub fn grid_outer(&mut self, on: bool) -> &mut Self {
         self.style.grid.outer = on;

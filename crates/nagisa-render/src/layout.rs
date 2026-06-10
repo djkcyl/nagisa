@@ -596,6 +596,24 @@ impl LayoutCtx<'_> {
                 *wid = (*wid * factor).max(1.0);
             }
         }
+        // expand:列宽合计不足可用宽 → 富余按比例分给自适应列(全固定列则整体等比放大)。
+        let total: f32 = widths.iter().sum();
+        if t.style.expand && total > 0.0 && total < avail_w {
+            if !auto.is_empty() {
+                let auto_total: f32 = auto.iter().map(|&k| widths[k]).sum();
+                if auto_total > 0.0 {
+                    let extra = avail_w - total;
+                    for &k in &auto {
+                        widths[k] += extra * (widths[k] / auto_total);
+                    }
+                }
+            } else {
+                let factor = avail_w / total;
+                for wid in widths.iter_mut() {
+                    *wid *= factor;
+                }
+            }
+        }
         widths
     }
 }

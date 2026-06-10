@@ -75,11 +75,14 @@ pub struct TableStyle {
     pub grid: TableGrid,
     /// 表头浅底,默认开。
     pub header_fill: bool,
+    /// 拉伸铺满可用宽:列宽合计不足时把富余宽度按比例分给自适应列(全是固定列则整体
+    /// 等比放大)。默认关——窄表保持自然宽。
+    pub expand: bool,
 }
 
 impl Default for TableStyle {
     fn default() -> Self {
-        Self { pad_x: None, pad_y: None, grid: TableGrid::default(), header_fill: true }
+        Self { pad_x: None, pad_y: None, grid: TableGrid::default(), header_fill: true, expand: false }
     }
 }
 

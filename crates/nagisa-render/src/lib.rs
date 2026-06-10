@@ -96,3 +96,10 @@ pub fn render_to_rgba(doc: &Document, opts: &RenderOptions) -> Result<image::Rgb
     let layout = layout::layout_document(doc, opts)?;
     paint::paint_rgba(&layout, opts)
 }
+
+/// 只排版、不绘制:返回这份文档渲出来的图片尺寸(**物理像素**,即已含 `scale`)。
+/// 供调用方做内容装箱——如按高度上限把长列表切成多张图,定好切分再真正渲染。
+pub fn measure_document(doc: &Document, opts: &RenderOptions) -> Result<(u32, u32)> {
+    let layout = layout::layout_document(doc, opts)?;
+    Ok((layout.width_px, layout.height_px))
+}

@@ -169,14 +169,20 @@ pub struct RenderOptions {
 pub struct PageChrome {
     /// 行内内容(纯文字经 [`new`](Self::new),富文本经 [`rich`](Self::rich))。
     pub inlines: Vec<Inline>,
+    /// 行尾内容(可选):与 `inlines` 同一行,右对齐——「左 logo 右署名」的分栏形态。
+    /// 设了它,`align` 只管 `inlines`(通常配左对齐)。
+    pub trailing: Option<Vec<Inline>>,
     /// 水平对齐(`with_header` 默认左、`with_footer` 默认居中)。
     pub align: Align,
     /// 缺省文字色:未显式上色的 span 用它;`None` = 主题次要色(muted)。
     pub color: Option<Color>,
     /// 相对基准字号的倍率(默认 0.72)。
     pub size: f32,
-    /// 与内容之间画一条细线(默认开)。
+    /// 与内容之间画一条细线(默认开;设了 `band` 自动不画)。
     pub rule: bool,
+    /// 满幅色带(可选,仅页脚生效):整条画布宽的底色带贴住画布底,文字坐在带内——
+    /// 分享卡式的「底栏」。设色深时记得给 span 配亮色文字。
+    pub band: Option<Color>,
 }
 
 impl PageChrome {
@@ -194,7 +200,31 @@ impl PageChrome {
     }
 
     fn from_inlines(inlines: Vec<Inline>) -> Self {
-        Self { inlines, align: Align::Left, color: None, size: 0.72, rule: true }
+        Self {
+            inlines,
+            trailing: None,
+            align: Align::Left,
+            color: None,
+            size: 0.72,
+            rule: true,
+            band: None,
+        }
+    }
+
+    /// 设行尾内容(右对齐,与主内容同一行):「左 logo 右署名」分栏。
+    pub fn trailing<R>(mut self, f: impl FnOnce(&mut ParaBuilder) -> R) -> Self {
+        let mut pb = ParaBuilder::new();
+        let _ = f(&mut pb);
+        self.trailing = Some(pb.into_inlines());
+        self
+    }
+
+    /// 设满幅色带(十六进制;非法忽略)。仅页脚生效,自动不再画细线。
+    pub fn band(mut self, hex: &str) -> Self {
+        if let Some(c) = Color::hex(hex) {
+            self.band = Some(c);
+        }
+        self
     }
     /// 设对齐。
     pub fn align(mut self, a: Align) -> Self {

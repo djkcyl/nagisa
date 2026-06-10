@@ -131,13 +131,35 @@ pub(crate) fn layout_document(doc: &Document, opts: &RenderOptions) -> Result<La
     for (i, block) in doc.blocks.iter().enumerate() {
         ctx.block(block, x_left, content_w, i == 0);
     }
+    // 页脚:色带形态时记下(插入位置, 带顶)——带要铺到画布底,总高得排完才知道。
+    let mut footer_band: Option<(usize, f32)> = None;
     if let Some(c) = &opts.footer {
-        ctx.chrome_bar(c, x_left, content_w, false);
+        let idx = ctx.items.len();
+        if let Some(band_top) = ctx.chrome_bar(c, x_left, content_w, false) {
+            footer_band = Some((idx, band_top));
+        }
     }
 
     let height_f = ctx.y + pad.bottom * sc;
     if !height_f.is_finite() {
         return Err(Error::Layout("内容高度非有限(检查字号 / 图宽 / 内边距)".into()));
+    }
+    // 满幅色带收尾:贴边铺到画布底。插回页脚自身条目**之前**,免得盖住页脚文字的
+    // 衬底装饰(高亮/码片底,同属 Under 层、按入列序绘制)。
+    if let Some((idx, band_top)) = footer_band {
+        let color = opts.footer.as_ref().and_then(|c| c.band).unwrap_or(opts.theme.border);
+        ctx.items.insert(
+            idx,
+            DisplayItem::Rect {
+                x: 0.0,
+                y: band_top,
+                w: opts.width * sc,
+                h: (height_f - band_top).max(0.0),
+                color,
+                radius: 0.0,
+                layer: RectLayer::Under,
+            },
+        );
     }
     let width_px = (opts.width * sc).round().max(1.0) as u32;
     let height_px = height_f.round().max(1.0) as u32;
@@ -409,32 +431,21 @@ impl LayoutCtx<'_> {
         self.y += base * sc * 0.4;
     }
 
-    /// 页眉 / 页脚条:一行小字(可富文本)+ 可选细线。`top = true` 排在内容前(字在上、
-    /// 线在下),否则排在内容后(线在上、字在下)。未显式上色的 span 染缺省色(主题次要色)。
-    fn chrome_bar(&mut self, c: &crate::theme::PageChrome, x: f32, w: f32, top: bool) {
+    /// 页眉 / 页脚条:一行小字(可富文本,可带右对齐的行尾段)+ 可选细线 / 满幅色带。
+    /// `top = true` 排在内容前(字在上、线在下),否则排在内容后(线在上、字在下)。
+    /// 未显式上色的 span 染缺省色(主题次要色)。页脚设了 `band` 时不画细线、只记**带顶 y**
+    /// 返回——色带矩形要铺到画布底,总高此刻未知,由 `layout_document` 收尾时补画。
+    fn chrome_bar(&mut self, c: &crate::theme::PageChrome, x: f32, w: f32, top: bool) -> Option<f32> {
         let (base, sc) = (self.opts.theme.base_size, self.sc);
         let px = base * c.size;
         let ink = c.color.unwrap_or(self.opts.theme.muted);
-        let inl: Vec<Inline> = c
-            .inlines
-            .iter()
-            .cloned()
-            .map(|mut i| {
-                if let Inline::Text { style, .. } = &mut i {
-                    if style.color.is_none() {
-                        style.color = Some(ink);
-                    }
-                }
-                i
-            })
-            .collect();
         let hairline = (1.0 * sc).max(1.0);
         // 行盒的半行距(行高超出字号的部分,上下各摊一半):墨迹并不顶着行盒边沿,
         // 对称留白要按**墨迹**算,从间距里扣掉它。
         let line_pad = px * sc * (self.opts.theme.line_height - 1.0) / 2.0;
         if top {
             // 字带在「画布顶 → 细线」之间上下居中:字下间距取与顶边距相同(至少 0.35em)。
-            let h = self.emit_text(&inl, c.align, px, false, x, self.y, w);
+            let h = self.chrome_line(c, ink, px, x, w);
             self.y += h + (self.opts.padding.top * sc - line_pad).max(base * sc * 0.35);
             if c.rule {
                 self.items.push(DisplayItem::Rect {
@@ -449,6 +460,16 @@ impl LayoutCtx<'_> {
                 self.y += hairline;
             }
             self.y += base * sc * 0.5;
+            None
+        } else if c.band.is_some() {
+            // 色带式:与内容空 0.6em,带从这里铺到画布底;带内上沿留白取底边距
+            // (与带下沿即画布底边距对称),文字坐在带的纵向正中。
+            self.y += base * sc * 0.6;
+            let band_top = self.y;
+            self.y += (self.opts.padding.bottom * sc - line_pad).max(base * sc * 0.5);
+            let h = self.chrome_line(c, ink, px, x, w);
+            self.y += h;
+            Some(band_top)
         } else {
             self.y += base * sc * 0.6;
             if c.rule {
@@ -466,9 +487,45 @@ impl LayoutCtx<'_> {
             // 字带在「细线 → 画布底」之间上下居中:线下间距取与底边距相同(至少 0.35em)
             // ——否则字吊在线下、底下一大段留白,观感像没对齐。
             self.y += (self.opts.padding.bottom * sc - line_pad).max(base * sc * 0.35);
-            let h = self.emit_text(&inl, c.align, px, false, x, self.y, w);
+            let h = self.chrome_line(c, ink, px, x, w);
             self.y += h;
+            None
         }
+    }
+
+    /// 页眉/页脚的一行:主段按 `c.align` 排,行尾段(若有)右对齐同一行;未显式上色的
+    /// span 染 `ink`。返回行高(两段取高者),不推进游标。
+    fn chrome_line(
+        &mut self,
+        c: &crate::theme::PageChrome,
+        ink: Color,
+        px: f32,
+        x: f32,
+        w: f32,
+    ) -> f32 {
+        let fill = |src: &[Inline]| -> Vec<Inline> {
+            src.iter()
+                .cloned()
+                .map(|mut i| {
+                    if let Inline::Text { style, .. } = &mut i {
+                        if style.color.is_none() {
+                            style.color = Some(ink);
+                        }
+                    }
+                    i
+                })
+                .collect()
+        };
+        let main = fill(&c.inlines);
+        let h1 = self.emit_text(&main, c.align, px, false, x, self.y, w);
+        let h2 = match &c.trailing {
+            Some(t) => {
+                let t = fill(t);
+                self.emit_text(&t, Align::Right, px, false, x, self.y, w)
+            }
+            None => 0.0,
+        };
+        h1.max(h2)
     }
 
     /// 图面装饰层:边框(描边随圆角)/ 角标(圆角底板 + 文字)/ 水印(半透明文字)。

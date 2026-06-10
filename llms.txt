@@ -124,9 +124,9 @@ async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
 
 ### 出图 / 排版(可选,feature "render")
 
-- 能力:`nagisa::render` 把标记文本(类 Markdown + 扩展)或 Rust 构建器(`Doc`)的文档排版成图片字节——标题/段落/粗斜下删·色·高亮·字号·字族/链接(取文字按强调色)/列表(含任务列表 □/✓)/引用/代码(语言标签在盒角)/分割线/图片/多栏/表格(自适应列宽·限宽·按列行格上色·紧凑度与网格可调)、左中右两端对齐、CJK+拉丁+emoji 混排、亮暗主题、内置字体(黑体+等宽,细/常规/粗真字重,zstd 压缩内嵌、首用解压);衬线/楷体角色不随包内置——FontHandle::builder().data(bytes)(裸字节或 zstd 皆可)/.dir()/系统字体提供,默认字族名 Noto Serif SC / LXGW WenKai GB,缺则回退黑体;楷体字重夹 300–500。
-- 查:`crates/nagisa-render/src/lib.rs`(crate rustdoc 即用法指南与配置)、`model.rs`(文档模型)、`build.rs`(构建器)、`markup.rs`(标记语法);入口 `render_markup` / `render_document`,配置 `RenderOptions`(`OutputFormat::Png/PngFast/Webp/WebpOrPng`——Webp 超 16383px 报错、WebpOrPng 超限自动落 PNG;`scale` 预设 `.fast/.sharp/...`、`Theme`、`FontHandle`)。
-- 非显然:与协议解耦——产物是图片字节,自己包 `reply.image_bytes(png).send()` 发出;文字图选 `.webp()` 最小最快(JPEG 对锐利文字反而又慢又大,已不提供);`scale`(默认 2×)是体积 / 速度总闸。
+- 能力:`nagisa::render` 把标记文本(类 Markdown + 扩展)或 Rust 构建器(`Doc`)的文档排版成图片字节——标题/段落/粗斜下删·色·高亮·字号·字族·文字阴影/链接(取文字按强调色)/列表(含任务列表 □/✓)/引用/代码(语言标签在盒角)/分割线/图片(装饰层:角标/边框/水印/圆角裁切/投影,不参与布局尺寸)/多栏/表格(自适应列宽·限宽·expand 铺满·按列行格上色·紧凑度与网格可调)/页眉页脚(`PageChrome`:富文本/右对齐行尾分栏/满幅色带,配在 RenderOptions 上所有出图统一带)、左中右两端对齐、CJK+拉丁+emoji 混排、亮暗主题、内置字体(黑体+等宽,细/常规/粗真字重,zstd 压缩内嵌、首用解压);衬线/楷体角色不随包内置——FontHandle::builder().data(bytes)(裸字节或 zstd 皆可)/.dir()/系统字体提供,默认字族名 Noto Serif SC / LXGW WenKai GB,缺则回退黑体;楷体字重夹 300–500。
+- 查:`crates/nagisa-render/src/lib.rs`(crate rustdoc 即用法指南与配置)、`model.rs`(文档模型)、`build.rs`(构建器,图片装饰在 `ImageBuilder`)、`markup.rs`(标记语法)、`theme.rs`(`PageChrome`);入口 `render_markup` / `render_document` / `measure_document`(只排版量尺寸,按高度装箱分页用),配置 `RenderOptions`(`OutputFormat::Png/PngFast/Webp/WebpOrPng`——Webp 超 16383px 报错、WebpOrPng 超限自动落 PNG;`scale` 预设 `.fast/.sharp/...`、`Theme`、`FontHandle`、`with_header/with_footer`)。
+- 非显然:与协议解耦——产物是图片字节,自己包 `reply.image_bytes(png).send()` 发出;文字图选 `.webp()` 最小最快(JPEG 对锐利文字反而又慢又大,已不提供);`scale`(默认 2×)是体积 / 速度总闸;装饰/图注 builder 闭包写花括号块(`|b| { b.anchor(..); }`),单表达式链式返回 `&mut` 会撞闭包生命周期。
 
 ### 域模型(拆解收到的消息/事件)
 

@@ -512,12 +512,13 @@ fn parse_table(lines: &[String], start: usize) -> (Table, usize) {
     (Table { header, rows, cols, style: TableStyle::default() }, i)
 }
 
-/// 给一串块整体设对齐(围栏对齐下沉用):标题 / 段落直接设;引用 / 列表项递归下沉。
+/// 给一串块整体设对齐(围栏对齐下沉用):标题 / 段落直接设;引用 / 列表项 / 面板递归下沉。
 fn apply_align(blocks: &mut [Block], align: Align) {
     for b in blocks {
         match b {
             Block::Heading { align: a, .. } | Block::Paragraph { align: a, .. } => *a = align,
             Block::Quote(inner) => apply_align(inner, align),
+            Block::Panel(p) => apply_align(&mut p.blocks, align),
             Block::List(list) => {
                 for it in &mut list.items {
                     apply_align(&mut it.blocks, align);

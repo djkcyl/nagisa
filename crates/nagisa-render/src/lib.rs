@@ -35,10 +35,11 @@
 //! 楷 / 等宽)、文字阴影、链接(图片点不了,取文字按强调色渲染)、行内与块级代码(语言标签
 //! 渲染在盒角)、有序 / 无序列表(可嵌套)、任务列表(`- [ ]` / `- [x]` → `□` / `✓`)、引用、
 //! 分割线、图片(缩放 / 对齐 / 图注 + 装饰层:角标 / 边框 / 水印 / 圆角裁切 / 投影,见
-//! [`ImageBuilder`])、左中右两端对齐、多栏并排([`Columns`])、表格([`Table`]:自适应列宽 /
-//! 限宽 / 铺满可用宽(`expand`)/ 按列行格上色 / 紧凑度与网格可调)。标记语言对应是 Markdown
-//! 基底加少量扩展(`==高亮==`、`[文字]{属性}`、`::: 围栏`、GFM 表格),见 [`parse_markup`];
-//! 构建器见 [`Doc`]。
+//! [`ImageBuilder`])、左中右两端对齐、多栏并排([`Columns`])、面板([`Panel`]:底色 / 边框 /
+//! 圆角 / 内边距 / 投影的卡片容器,作并排栏整栏时自动拉齐行高;`::: panel {bg=…}` /
+//! [`Doc::panel`])、表格([`Table`]:自适应列宽 / 限宽 / 铺满可用宽(`expand`)/ 按列行格
+//! 上色 / 紧凑度与网格可调)。标记语言对应是 Markdown 基底加少量扩展(`==高亮==`、
+//! `[文字]{属性}`、`::: 围栏`、GFM 表格),见 [`parse_markup`];构建器见 [`Doc`]。
 //!
 //! # 输出与配置
 //!
@@ -72,8 +73,8 @@ mod paint;
 mod theme;
 
 pub use build::{
-    BadgeBuilder, ColumnsBuilder, Doc, ImageBuilder, ListBuilder, ParaBuilder, ProgressBuilder,
-    StyleBuilder, TableBuilder, WatermarkBuilder,
+    BadgeBuilder, ColumnsBuilder, Doc, ImageBuilder, ListBuilder, PanelBuilder, ParaBuilder,
+    ProgressBuilder, StyleBuilder, TableBuilder, WatermarkBuilder,
 };
 pub use error::{Error, Result};
 pub use font::FontHandle;
@@ -82,7 +83,8 @@ pub use model::ImageSource;
 pub use model::{
     Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document,
     DotMark, FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem,
-    ListKind, Progress, RingMark, Shadow, Table, TableGrid, TableStyle, TextStyle, Watermark,
+    ListKind, Panel, PanelDecor, Progress, RingMark, Shadow, Table, TableGrid, TableStyle,
+    TextStyle, Watermark,
 };
 pub use theme::{Insets, OutputFormat, PageChrome, RenderOptions, Theme};
 

@@ -12,8 +12,8 @@ use crate::font::FontHandle;
 use std::collections::HashMap;
 
 use crate::model::{
-    Align, Block, BlockImage, Cell, Color, Column, Columns, Document, FontRole, ImageSource,
-    Inline, Length, List, ListKind, Progress, Table, TextStyle,
+    Align, Block, BlockImage, Cell, Color, Column, Columns, Document, FontRole, ImageBorder,
+    ImageSource, Inline, Length, List, ListKind, Progress, Table, TextStyle,
 };
 use crate::theme::{RenderOptions, Theme};
 
@@ -73,6 +73,8 @@ pub(crate) struct ShadowItem {
     pub radius: f32,
     pub blur: f32,
     pub color: Color,
+    /// 垫底影(面板投影):画在衬底矩形之前,免得压暗自家底色;普通影(图片)在衬底之后。
+    pub under: bool,
 }
 
 /// 描边矩形绘制参数(图片边框;线宽沿路径居中)。
@@ -217,6 +219,9 @@ impl LayoutCtx<'_> {
             Block::Columns(c) => self.columns(c, x, w),
             Block::Table(t) => self.table(t, x, w),
             Block::Progress(p) => self.progress(p, x, w),
+            Block::Panel(p) => {
+                self.panel(p, x, w);
+            }
         }
     }
 
@@ -267,6 +272,75 @@ impl LayoutCtx<'_> {
             self.items.push(DisplayItem::Glyphs(glyphs));
         }
         h
+    }
+
+    /// 面板:底色 / 边框 / 圆角 / 内边距 / 投影的卡片容器,递归排内部块。装饰矩形排完
+    /// 内容才知道高度,插回到内容条目之前(垫底);返回装饰条目区间起点与个数,
+    /// 给并排栏拉齐卡片高度用([`Self::columns`])。
+    fn panel(&mut self, p: &crate::model::Panel, x: f32, w: f32) -> (usize, usize) {
+        let (base, sc) = (self.opts.theme.base_size, self.sc);
+        let d = &p.decor;
+        let pad = safe_px(d.pad.unwrap_or(base * 0.6)) * sc;
+        let radius = safe_px(d.radius.unwrap_or(12.0)) * sc;
+        // bg 与 border 都缺省 → 主题默认卡片样(浅底 + 细边)。
+        let plain = d.bg.is_none() && d.border.is_none();
+        let bg = if plain { Some(self.opts.theme.code_bg) } else { d.bg };
+        let border = if plain {
+            Some(ImageBorder { width: 1.5, color: self.opts.theme.border })
+        } else {
+            d.border
+        };
+
+        self.y += base * sc * 0.35;
+        let top = self.y;
+        let insert_at = self.items.len();
+        self.y += pad;
+        for (i, b) in p.blocks.iter().enumerate() {
+            self.block(b, x + pad, (w - 2.0 * pad).max(1.0), i == 0);
+        }
+        let h = (self.y + pad - top).max(2.0 * pad);
+
+        // 装饰条目按固定顺序插回内容之前:影 → 底 → 框(columns 拉齐按此计数)。
+        let mut decor: Vec<DisplayItem> = Vec::new();
+        if let Some(sh) = &d.shadow {
+            decor.push(DisplayItem::Shadow(ShadowItem {
+                x: x + sh.dx * sc,
+                y: top + sh.dy * sc,
+                w,
+                h,
+                radius,
+                blur: (sh.blur * sc).max(0.0),
+                color: sh.color,
+                under: true,
+            }));
+        }
+        if let Some(c) = bg {
+            decor.push(DisplayItem::Rect {
+                x,
+                y: top,
+                w,
+                h,
+                color: c,
+                radius,
+                layer: RectLayer::Under,
+            });
+        }
+        if let Some(b) = border {
+            decor.push(DisplayItem::StrokeRect(StrokeItem {
+                x,
+                y: top,
+                w,
+                h,
+                radius,
+                width: (b.width * sc).max(1.0),
+                color: b.color,
+            }));
+        }
+        let count = decor.len();
+        self.items.splice(insert_at..insert_at, decor);
+
+        self.y = top + h + base * sc * 0.35;
+        (insert_at, count)
     }
 
     /// 引用:左侧强调色竖条 + 内缩,递归排内部块;竖条高度按内容算(内容排完再补)。
@@ -416,6 +490,7 @@ impl LayoutCtx<'_> {
                 radius,
                 blur: (sh.blur * sc).max(0.0),
                 color: sh.color,
+                under: false,
             }));
         }
         self.items.push(DisplayItem::Image { x: ix, y: self.y, w: dw, h: dh, src, radius });
@@ -611,12 +686,37 @@ impl LayoutCtx<'_> {
         let y_top = self.y;
         let mut cx = x;
         let mut max_h = 0.0f32;
+        // (装饰条目区间起点, 个数, 影的纵向偏移):单面板栏记下,行高定了再拉齐。
+        let mut stretch: Vec<(usize, usize, f32)> = Vec::new();
         for col in cols {
             let cw = (avail * col.weight / total_w).max(1.0);
+            let offset = self.items.len();
             let (items, images, y_bottom) = self.sub_layout(&col.blocks, cx, y_top, cw);
             self.merge(items, images);
+            // 整栏只有一个面板 → 卡片栏:装饰条目固定在该栏条目区间起点(面板先插装饰),
+            // 个数与 [`Self::panel`] 的插入逻辑一致:影 → 底 → 框。
+            if let [Block::Panel(p)] = col.blocks.as_slice() {
+                let plain = p.decor.bg.is_none() && p.decor.border.is_none();
+                let n = usize::from(p.decor.shadow.is_some())
+                    + usize::from(plain || p.decor.bg.is_some())
+                    + usize::from(plain || p.decor.border.is_some());
+                let shadow_dy = p.decor.shadow.as_ref().map(|sh| sh.dy * sc).unwrap_or(0.0);
+                stretch.push((offset, n, shadow_dy));
+            }
             max_h = max_h.max(y_bottom - y_top);
             cx += cw + gap;
+        }
+        // 卡片拉齐:装饰盒底边对齐到本行最高栏的面板底(行底减面板的后间距)。
+        let target_bottom = y_top + max_h - base * sc * 0.35;
+        for (at, n, shadow_dy) in stretch {
+            for item in self.items.iter_mut().skip(at).take(n) {
+                match item {
+                    DisplayItem::Shadow(s) => s.h = (target_bottom + shadow_dy - s.y).max(s.h),
+                    DisplayItem::Rect { y, h, .. } => *h = (target_bottom - *y).max(*h),
+                    DisplayItem::StrokeRect(s) => s.h = (target_bottom - s.y).max(s.h),
+                    _ => {}
+                }
+            }
         }
         self.y = y_top + max_h + base * sc * 0.3;
     }
@@ -1169,7 +1269,16 @@ fn build_spans<'a>(
                 if style.italic {
                     a = a.style(Style::Italic);
                 }
-                spans.push((text, a));
+                // emoji 表现序列切到彩色 emoji 字族——黑体自带一批 emoji 的单色字面,
+                // 请求字族先命中会抢跑,同一行 emoji 一半黑白一半彩色;切段后统一彩色,
+                // 字体缺失时按 cosmic-text 回退,不丢字。装饰共用同一条(metadata 同 idx)。
+                for (seg, emoji) in emoji_runs(text) {
+                    if emoji {
+                        spans.push((seg, a.clone().family(Family::Name(&theme.font_emoji))));
+                    } else {
+                        spans.push((seg, a.clone()));
+                    }
+                }
                 decos.push(SpanDeco {
                     underline: style.underline,
                     strike: style.strike,
@@ -1425,6 +1534,50 @@ fn collect_decos(
             }
         }
     }
+}
+
+/// 把文本切成(emoji 表现段, 是否 emoji)交替的连续段,字节区间零拷贝。
+/// 判定:默认 emoji 表现的码位(含修饰基底)起段;VS16(U+FE0F)把前一个字符拉进段
+/// (⛏︎ → ⛏️ 这类文本表现默认的码位靠它升级);肤色修饰与区域指示符天然在段内
+/// (Emoji_Presentation=YES);键帽组合(U+20E3)连同前一字符入段;ZWJ 两侧都在段内
+/// 时并入段(👨‍👩‍👦 这类合字序列整段交给 emoji 字体做 GSUB)。
+fn emoji_runs(text: &str) -> Vec<(&str, bool)> {
+    use unicode_properties::{EmojiStatus, UnicodeEmoji};
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut flags = vec![false; chars.len()];
+    for (k, &(_, c)) in chars.iter().enumerate() {
+        flags[k] = matches!(
+            c.emoji_status(),
+            EmojiStatus::EmojiPresentation
+                | EmojiStatus::EmojiModifierBase
+                | EmojiStatus::EmojiPresentationAndModifierBase
+                | EmojiStatus::EmojiPresentationAndEmojiComponent
+                | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent
+        );
+    }
+    for (k, &(_, c)) in chars.iter().enumerate() {
+        if (c == '\u{FE0F}' || c == '\u{20E3}') && k > 0 {
+            flags[k] = true;
+            flags[k - 1] = true;
+        }
+    }
+    for (k, &(_, c)) in chars.iter().enumerate() {
+        if c == '\u{200D}' && k > 0 && k + 1 < chars.len() && flags[k - 1] && flags[k + 1] {
+            flags[k] = true;
+        }
+    }
+    let mut runs = Vec::new();
+    let mut start = 0usize;
+    for k in 1..chars.len() {
+        if flags[k] != flags[k - 1] {
+            runs.push((&text[chars[start].0..chars[k].0], flags[start]));
+            start = k;
+        }
+    }
+    if !chars.is_empty() {
+        runs.push((&text[chars[start].0..], flags[start]));
+    }
+    runs
 }
 
 /// 所有文字 Attrs 的起点:统一关闭 hinting。本引擎默认 2× 超采样,hinting 对画质无益;

@@ -58,6 +58,9 @@ pub struct Theme {
     pub font_mono: String,
     /// 楷体字族名。
     pub font_kai: String,
+    /// 彩色 emoji 字族名(emoji 表现序列统一切到它,黑体的单色字面不抢跑;
+    /// 不随包内置,默认指系统 / 自备的 Noto Color Emoji,缺则回退)。
+    pub font_emoji: String,
     /// 基准字号(逻辑像素)。
     pub base_size: f32,
     /// 行高倍率。
@@ -113,6 +116,7 @@ impl Theme {
             font_serif: "Noto Serif SC".to_string(), // 不内置:使用方注入思源宋体即生效,缺则回退黑体
             font_mono: "JetBrains Mono".to_string(), // 内置(CJK 在等宽语境回退 Noto)
             font_kai: "LXGW WenKai GB".to_string(),  // 不内置:使用方注入霞鹜文楷即生效,缺则回退黑体
+            font_emoji: "Noto Color Emoji".to_string(), // 不内置:系统或自备,缺则回退
             base_size: 30.0,
             line_height: 1.5,
             heading_scale: [2.0, 1.6, 1.35, 1.15, 1.0, 0.9],

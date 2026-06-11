@@ -401,6 +401,68 @@ fn main() {
         .build();
     write_png("out/progress.png", &progress);
 
+    // 面板样张:默认卡片 / 自定装饰 / 并排等高卡片 / markup 围栏。
+    let panel = Doc::new()
+        .heading(2, |h| {
+            h.text("面板");
+        })
+        .panel(|p| {
+            p.text("默认卡片:主题浅底 + 细边 + 圆角,内边距 0.6 倍基准字号。");
+        })
+        .panel(|p| {
+            p.bg("#eef2ff").border(2.0, "#4c63b6").rounded(18.0).shadow();
+            p.heading(3, |h| {
+                h.text("自定装饰");
+            });
+            p.paragraph(|d| {
+                d.text("底色、边框、圆角、投影都可调;内层是块容器,").bold("什么块都能放").text("。");
+            });
+            p.progress(0.7, |b| {
+                b.height(10.0).fill("#4c63b6");
+            });
+        })
+        .columns(|c| {
+            c.panel(|p| {
+                p.heading(2, |h| {
+                    h.align(Align::Center).text("128");
+                });
+                p.paragraph(|d| {
+                    d.align(Align::Center).text("好友");
+                });
+            })
+            .panel(|p| {
+                p.bg("#ecfdf5");
+                p.heading(2, |h| {
+                    h.align(Align::Center).text("96");
+                });
+                p.paragraph(|d| {
+                    d.align(Align::Center).text("群");
+                });
+                p.paragraph(|d| {
+                    d.align(Align::Center).styled("这栏内容更高,左右卡片自动拉齐", |st| {
+                        st.color("#0e9488").size(0.8);
+                    });
+                });
+            })
+            .panel(|p| {
+                p.heading(2, |h| {
+                    h.align(Align::Center).text("3.4k");
+                });
+                p.paragraph(|d| {
+                    d.align(Align::Center).text("消息");
+                });
+            });
+        })
+        .build();
+    write_png("out/panel.png", &panel);
+
+    // markup 围栏版:::: panel 与带装饰属性的 ::: col。
+    write_markup(
+        "out/panel-markup.png",
+        "::: panel {bg=#fff7ed, border=#f59e0b, rounded=14}\n标记文本同样写得出卡片:`::: panel {bg=… border=… rounded=… pad=… shadow}`。\n:::\n\n::: columns\n::: col {bg=#eef2ff}\n左卡\n:::\n::: col 2 {border=#0e9488}\n右卡权重 2,`::: col 权重 {属性}`。\n:::\n:::\n",
+        Theme::light(),
+    );
+
     // 综合样张:同一段 markup,亮 / 暗两套主题。
     write_markup("out/showcase-light.png", SHOWCASE, Theme::light());
     write_markup("out/showcase-dark.png", SHOWCASE, Theme::dark());
@@ -418,7 +480,7 @@ const FULL_HEAD: &str = r#"# nagisa-render · 全功能样张 {align=center}
 
 ## 行内样式
 
-一行混排:**粗体**、*斜体*、***粗斜***、~~删除~~、[下划线]{underline}、`行内代码`、==高亮==、[自定底色]{bg=#fde047}、[彩色加粗]{color=#7c3aed,bold}、[字号 1.3×]{size=1.3}、[0.8×]{size=0.8} 与 [链接](https://github.com/djkcyl/nagisa);CJK 与 English 自动整形断行,user_id 不会被 `_` 吞掉,转义 \*照常星号\*。
+一行混排:**粗体**、*斜体*、***粗斜***、~~删除~~、[下划线]{underline}、`行内代码`、==高亮==、[自定底色]{bg=#fde047}、[彩色加粗]{color=#7c3aed,bold}、[字号 1.3×]{size=1.3}、[0.8×]{size=0.8} 与 [链接](https://github.com/djkcyl/nagisa);CJK、English 与 emoji 😄⛏️🤖 自动整形断行,user_id 不会被 `_` 吞掉,转义 \*照常星号\*。
 
 字重任意档:[细 300]{light} · 常规 400 · [Medium 500]{weight=500} · **粗 700** · [Black 900]{weight=900};行尾反斜杠硬换行 \
 这是换出来的第二行。
@@ -568,17 +630,28 @@ fn write_full() {
                 });
             });
     })
+    .heading(2, |h| {
+        h.text("面板卡片");
+    })
     .columns(|c| {
         for (n, label) in [("128", "好友"), ("96", "群"), ("3.4k", "消息")] {
-            c.col(|d| {
-                d.heading(2, |h| {
+            c.panel(|p| {
+                p.heading(2, |h| {
                     h.align(Align::Center).text(n);
                 });
-                d.paragraph(|p| {
-                    p.align(Align::Center).text(label);
+                p.paragraph(|d| {
+                    d.align(Align::Center).text(label);
                 });
             });
         }
+    })
+    .panel(|p| {
+        p.bg("#eef2ff").border(2.0, "#4c63b6").rounded(18.0).shadow();
+        p.paragraph(|d| {
+            d.text("面板:底色 / 边框 / 圆角 / 内边距 / 投影的卡片容器;并排栏里整栏一个面板时自动拉齐行高。标记文本写 ")
+                .code("::: panel {bg=… border=…}")
+                .text("。");
+        });
     })
     .heading(2, |h| {
         h.text("进度条");

@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use crate::model::{
     Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document,
     FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind,
-    Progress, Shadow, Table, TableStyle, TextStyle, Watermark,
+    Panel, PanelDecor, Progress, Shadow, Table, TableStyle, TextStyle, Watermark,
 };
 
 /// 文档 / 块序列构建器。也用作引用、列表项的内层块容器。
@@ -94,6 +94,16 @@ impl Doc {
     /// 分割线。
     pub fn divider(&mut self) -> &mut Self {
         self.blocks.push(Block::Divider);
+        self
+    }
+
+    /// 面板(卡片):闭包先配装饰(`.bg(..)` / `.border(..)` / `.rounded(..)` / `.pad(..)` /
+    /// `.shadow()`),内容方法经 `Deref` 直接用(`p.text(..)` / `p.heading(..)` …);全缺省
+    /// 即主题默认卡片样(浅底 + 细边 + 圆角)。
+    pub fn panel<R>(&mut self, f: impl FnOnce(&mut PanelBuilder) -> R) -> &mut Self {
+        let mut pb = PanelBuilder::new();
+        let _ = f(&mut pb);
+        self.blocks.push(Block::Panel(pb.into_panel()));
         self
     }
 
@@ -629,6 +639,95 @@ impl ColumnsBuilder {
         let _ = f(&mut inner);
         self.cols.push(Column { blocks: inner.blocks, weight });
         self
+    }
+    /// 一栏卡片(权重 1.0):整栏就是一个面板,装饰盒自动拉齐到本行最高栏。
+    pub fn panel<R>(&mut self, f: impl FnOnce(&mut PanelBuilder) -> R) -> &mut Self {
+        self.panel_weighted(1.0, f)
+    }
+    /// 一栏卡片(指定宽度权重)。
+    pub fn panel_weighted<R>(
+        &mut self,
+        weight: f32,
+        f: impl FnOnce(&mut PanelBuilder) -> R,
+    ) -> &mut Self {
+        let mut pb = PanelBuilder::new();
+        let _ = f(&mut pb);
+        self.cols.push(Column { blocks: vec![Block::Panel(pb.into_panel())], weight });
+        self
+    }
+}
+
+/// 面板构建器([`Doc::panel`] / [`ColumnsBuilder::panel`] 的闭包参数):装饰方法在本体,
+/// 内容方法经 `Deref` 落到内层 [`Doc`](先配装饰再加内容,内容方法返回 `&mut Doc`,
+/// 链上接不回装饰方法)。
+pub struct PanelBuilder {
+    doc: Doc,
+    decor: PanelDecor,
+}
+
+impl PanelBuilder {
+    fn new() -> Self {
+        Self { doc: Doc::new(), decor: PanelDecor::default() }
+    }
+
+    fn into_panel(self) -> Panel {
+        Panel { blocks: self.doc.blocks, decor: self.decor }
+    }
+
+    /// 底色(十六进制,可含 alpha;非法忽略)。
+    pub fn bg(&mut self, hex: &str) -> &mut Self {
+        if let Some(c) = Color::hex(hex) {
+            self.decor.bg = Some(c);
+        }
+        self
+    }
+    /// 边框:线宽(逻辑像素)+ 十六进制色(非法色忽略整条)。
+    pub fn border(&mut self, width: f32, hex: &str) -> &mut Self {
+        if width > 0.0 && width.is_finite() {
+            if let Some(color) = Color::hex(hex) {
+                self.decor.border = Some(ImageBorder { width, color });
+            }
+        }
+        self
+    }
+    /// 圆角半径(逻辑像素;0 = 直角)。
+    pub fn rounded(&mut self, radius: f32) -> &mut Self {
+        if radius.is_finite() && radius >= 0.0 {
+            self.decor.radius = Some(radius);
+        }
+        self
+    }
+    /// 内边距(逻辑像素;非有限或 < 0 忽略)。
+    pub fn pad(&mut self, px: f32) -> &mut Self {
+        if px.is_finite() && px >= 0.0 {
+            self.decor.pad = Some(px);
+        }
+        self
+    }
+    /// 投影(默认形态:下坠 2 逻辑像素、软化 6、黑 25%)。
+    pub fn shadow(&mut self) -> &mut Self {
+        self.decor.shadow = Some(Shadow::default());
+        self
+    }
+    /// 投影(自定形态:偏移/软化为逻辑像素,色为十六进制,非法色忽略整条)。
+    pub fn shadow_with(&mut self, dx: f32, dy: f32, blur: f32, hex: &str) -> &mut Self {
+        if let Some(color) = Color::hex(hex) {
+            self.decor.shadow = Some(Shadow { dx, dy, blur: blur.max(0.0), color });
+        }
+        self
+    }
+}
+
+impl std::ops::Deref for PanelBuilder {
+    type Target = Doc;
+    fn deref(&self) -> &Doc {
+        &self.doc
+    }
+}
+
+impl std::ops::DerefMut for PanelBuilder {
+    fn deref_mut(&mut self) -> &mut Doc {
+        &mut self.doc
     }
 }
 

@@ -92,16 +92,26 @@ fn render_pixmap(layout: &Layout, opts: &RenderOptions) -> Result<Pixmap> {
         .ok_or_else(|| Error::Layout("画布尺寸非法(过大或为 0)".into()))?;
     pix.fill(to_skia(opts.theme.background));
 
-    // 1) 衬底矩形(背景 / 高亮 / 底色,Under)——在一切之前。
+    // 0) 垫底影(面板投影)——在自家底色之前,只染到画布背景上。
+    for item in &layout.items {
+        if let DisplayItem::Shadow(s) = item {
+            if s.under {
+                draw_shadow(&mut pix, s);
+            }
+        }
+    }
+    // 1) 衬底矩形(背景 / 高亮 / 底色,Under)——盖住垫底影的内腹。
     for item in &layout.items {
         if let DisplayItem::Rect { x, y, w, h, color, radius, layer: RectLayer::Under } = item {
             draw_rect(&mut pix, *x, *y, *w, *h, *color, *radius);
         }
     }
-    // 2) 投影(模糊圆角矩形)——压在衬底上、垫在图片下。
+    // 2) 普通投影(图片)——压在衬底上、垫在图片下。
     for item in &layout.items {
         if let DisplayItem::Shadow(s) = item {
-            draw_shadow(&mut pix, s);
+            if !s.under {
+                draw_shadow(&mut pix, s);
+            }
         }
     }
     // 3) 图片(M4 起填充 layout.images;radius > 0 圆角裁切)。
@@ -145,7 +155,7 @@ fn render_pixmap(layout: &Layout, opts: &RenderOptions) -> Result<Pixmap> {
 /// 画投影:把(可圆角)矩形蒙版做三次盒模糊(逼近高斯),按色与 alpha 染色后合成。
 /// `blur` 为软化半径(物理像素),≤ 0.5 退化为实心矩形。
 fn draw_shadow(pix: &mut Pixmap, s: &ShadowItem) {
-    let &ShadowItem { x, y, w, h, radius, blur, color } = s;
+    let &ShadowItem { x, y, w, h, radius, blur, color, under: _ } = s;
     if w <= 0.0 || h <= 0.0 || color.a == 0 {
         return;
     }

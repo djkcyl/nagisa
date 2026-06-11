@@ -56,4 +56,5 @@ hmac = "0.13.0"
 image = { version = "0.25.10", default-features = false }
 ruzstd = "0.8.3"
 sha1 = "0.11.0"
+unicode-properties = { version = "0.1", default-features = false, features = ["emoji"] }
 tiny-skia = "0.12.0"

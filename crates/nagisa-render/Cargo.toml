@@ -13,6 +13,7 @@ image = { workspace = true, features = ["png", "webp"] }
 ruzstd = { workspace = true }
 thiserror = { workspace = true }
 tiny-skia = { workspace = true }
+unicode-properties = { workspace = true }
 
 [dev-dependencies]
 image = { workspace = true, features = ["png"] }

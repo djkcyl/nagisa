@@ -51,6 +51,32 @@ pub enum Block {
     Table(Table),
     /// 进度条。
     Progress(Progress),
+    /// 面板(卡片容器:底色 / 边框 / 圆角 / 内边距 / 投影,内层是块容器)。
+    Panel(Panel),
+}
+
+/// 面板:带装饰的块容器。作并排栏某栏唯一块时,装饰盒拉齐到本行最高栏(卡片排整齐)。
+#[derive(Clone, Debug)]
+pub struct Panel {
+    /// 内容块。
+    pub blocks: Vec<Block>,
+    /// 装饰。
+    pub decor: PanelDecor,
+}
+
+/// 面板装饰。`bg` 与 `border` 都缺省时按主题给「浅底 + 细边」的默认卡片样。
+#[derive(Clone, Debug, Default)]
+pub struct PanelDecor {
+    /// 底色;`None` 且无边框时用主题代码底色。
+    pub bg: Option<Color>,
+    /// 边框;`None` 且无底色时用主题边框色细线。
+    pub border: Option<ImageBorder>,
+    /// 圆角半径(逻辑像素);`None` = 12。
+    pub radius: Option<f32>,
+    /// 内边距(逻辑像素);`None` = 0.6 倍基准字号。
+    pub pad: Option<f32>,
+    /// 投影。
+    pub shadow: Option<Shadow>,
 }
 
 /// 表格。`cols` 给各列对齐与可选限宽(短于列数时,缺的列按默认:左对齐 + 自适应)。

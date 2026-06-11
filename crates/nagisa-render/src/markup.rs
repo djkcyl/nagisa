@@ -8,8 +8,8 @@
 
 use crate::error::Result;
 use crate::model::{
-    Align, Block, BlockImage, Cell, ColSpec, Column, Columns, Document, ImageSource, List, ListItem,
-    ListKind, Table, TableStyle,
+    Align, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document, ImageBorder,
+    ImageSource, List, ListItem, ListKind, Panel, PanelDecor, Shadow, Table, TableStyle,
 };
 
 mod attrs;
@@ -64,12 +64,18 @@ fn parse_blocks(lines: &[String]) -> Vec<Block> {
             continue;
         }
 
-        // 围栏 ::: word ... :::(支持嵌套)。word=对齐 → 对齐下沉;word=columns → 并排栏。
+        // 围栏 ::: word ... :::(支持嵌套)。word=对齐 → 对齐下沉;word=columns → 并排栏;
+        // word=panel → 面板(可带 `{bg=… border=… rounded=…}` 装饰属性)。
         if is_fence_open(&content) {
-            let word = content[3..].trim().to_string();
+            let (word, attrs) = split_fence_word(content[3..].trim());
             let inner = gather_div(lines, &mut i); // i 已跳到闭合之后
             if word == "columns" {
                 blocks.push(Block::Columns(Columns { cols: parse_columns(&inner), gap: None }));
+            } else if word == "panel" {
+                blocks.push(Block::Panel(Panel {
+                    blocks: parse_blocks(&inner),
+                    decor: panel_decor(attrs),
+                }));
             } else if let Some(align) = align_from_word(&word) {
                 let mut sub = parse_blocks(&inner);
                 apply_align(&mut sub, align);
@@ -355,17 +361,77 @@ fn parse_columns(inner: &[String]) -> Vec<Column> {
     let mut cols = Vec::new();
     let mut i = 0;
     while i < inner.len() {
-        let mut parts = inner[i].trim().strip_prefix(":::").unwrap_or("").split_whitespace();
+        let (head, attrs) =
+            split_fence_word(inner[i].trim().strip_prefix(":::").unwrap_or("").trim());
+        let mut parts = head.split_whitespace();
         if parts.next() == Some("col") {
             let weight =
                 parts.next().and_then(|s| s.parse::<f32>().ok()).filter(|w| *w > 0.0).unwrap_or(1.0);
             let col_lines = gather_div(inner, &mut i);
-            cols.push(Column { blocks: parse_blocks(&col_lines), weight });
+            let mut blocks = parse_blocks(&col_lines);
+            // 带装饰属性的栏 = 整栏一个面板(layout 把它拉齐到本行最高栏)。
+            if !attrs.is_empty() {
+                blocks = vec![Block::Panel(Panel { blocks, decor: panel_decor(attrs) })];
+            }
+            cols.push(Column { blocks, weight });
         } else {
             i += 1;
         }
     }
     cols
+}
+
+/// 围栏开启词拆成「词(含权重等)+ `{}` 内的属性串」;无属性时属性串为空。
+fn split_fence_word(s: &str) -> (String, &str) {
+    match (s.find('{'), s.rfind('}')) {
+        (Some(a), Some(b)) if b > a => (s[..a].trim().to_string(), &s[a + 1..b]),
+        _ => (s.trim().to_string(), ""),
+    }
+}
+
+/// 解析面板装饰属性:`bg=#hex`、`border=#hex`、`border-width=px`(默认 1.5)、
+/// `rounded=px`、`pad=px`、`shadow`(标志)。非法值忽略。
+fn panel_decor(attrs: &str) -> PanelDecor {
+    let mut d = PanelDecor::default();
+    let mut border_color: Option<Color> = None;
+    let mut border_width = 1.5f32;
+    for a in parse_attrs(attrs) {
+        match a {
+            Attr::Kv(k, v) => match k.as_str() {
+                "bg" => d.bg = Color::hex(&v).or(d.bg),
+                "border" => border_color = Color::hex(&v).or(border_color),
+                "border-width" => {
+                    if let Ok(w) = v.parse::<f32>() {
+                        if w.is_finite() && w > 0.0 {
+                            border_width = w;
+                        }
+                    }
+                }
+                "rounded" => {
+                    if let Ok(r) = v.parse::<f32>() {
+                        if r.is_finite() && r >= 0.0 {
+                            d.radius = Some(r);
+                        }
+                    }
+                }
+                "pad" => {
+                    if let Ok(p) = v.parse::<f32>() {
+                        if p.is_finite() && p >= 0.0 {
+                            d.pad = Some(p);
+                        }
+                    }
+                }
+                _ => {}
+            },
+            Attr::Flag(f) => {
+                if f == "shadow" {
+                    d.shadow = Some(Shadow::default());
+                }
+            }
+        }
+    }
+    d.border = border_color.map(|color| ImageBorder { width: border_width, color });
+    d
 }
 
 /// GFM 表格分隔行?每个非空单元格只含 `-`/`:` 且至少一个 `-`。

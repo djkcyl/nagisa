@@ -1008,7 +1008,7 @@ fn shape_text(
     let line_mult = theme.line_height;
     let default_px = safe_px(base_logical * sc);
     // metadata=usize::MAX ⇒ 无装饰(默认 / 换行用)。
-    let default_attrs = Attrs::new()
+    let default_attrs = base_attrs()
         .family(Family::Name(&theme.font_sans))
         .color(to_cosmic(theme.text))
         .metrics(Metrics::new(default_px, default_px * line_mult))
@@ -1149,7 +1149,7 @@ fn build_spans<'a>(
                 // 链接无显式色时用主题强调色。
                 let fallback = if style.link { theme.accent } else { theme.text };
                 let ink = style.color.unwrap_or(fallback);
-                let mut a = Attrs::new()
+                let mut a = base_attrs()
                     .family(family_of(&style.font, theme))
                     .color(to_cosmic(ink))
                     .metrics(Metrics::new(px, px * line_mult))
@@ -1199,7 +1199,7 @@ fn build_spans<'a>(
             Inline::Code(s) => {
                 let idx = decos.len();
                 let px = safe_px(base_logical * sc);
-                let mut a = Attrs::new()
+                let mut a = base_attrs()
                     .family(Family::Name(&theme.font_mono))
                     .color(to_cosmic(theme.code_text))
                     .metrics(Metrics::new(px, px * line_mult))
@@ -1236,7 +1236,7 @@ fn measure_natural(
 ) -> f32 {
     let px = safe_px(base_logical * sc);
     let line_mult = theme.line_height;
-    let default_attrs = Attrs::new()
+    let default_attrs = base_attrs()
         .family(Family::Name(&theme.font_sans))
         .metrics(Metrics::new(px, px * line_mult))
         .metadata(usize::MAX);
@@ -1425,6 +1425,14 @@ fn collect_decos(
             }
         }
     }
+}
+
+/// 所有文字 Attrs 的起点:统一关闭 hinting。本引擎默认 2× 超采样,hinting 对画质无益;
+/// 更要紧的是 swash 0.2 的 hint 实例缓存不按字号失效——共享 FontHandle 连续渲多张、
+/// 或同文档多字号时,字形会按「上一次的字号」栅格化(表头叠字、巨字、字距开洞),
+/// 关 hinting 直接绕开这条缓存。别改回 `Attrs::new()` 裸用。
+fn base_attrs() -> Attrs<'static> {
+    Attrs::new().cache_key_flags(cosmic_text::CacheKeyFlags::DISABLE_HINTING)
 }
 
 fn family_of<'a>(role: &'a FontRole, theme: &'a Theme) -> Family<'a> {

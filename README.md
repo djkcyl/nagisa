@@ -33,8 +33,8 @@ flowchart LR
 
 ```toml
 [dependencies]
-nagisa = "0.5"                                               # 默认含 onebot + milky 两套适配器
-# nagisa = { version = "0.5", features = ["log", "render"] } # 可选：事件日志 / 排版引擎（文档 → 图片）
+nagisa = "0.5.1"                                               # 默认含 onebot + milky 两套适配器
+# nagisa = { version = "0.5.1", features = ["log", "render"] } # 可选：事件日志 / 排版引擎（文档 → 图片）
 ```
 
 或一行 `cargo add nagisa`。另需一个已登录 QQ 的协议端（[Lagrange](https://github.com/LagrangeDev/Lagrange.Core) / NapCat / LLOneBot 等）在外部运行，Nagisa 负责连上它。

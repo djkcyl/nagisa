@@ -12,7 +12,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-version = "0.5.0"
+version = "0.5.1"
 license = "MIT OR Apache-2.0"
 authors = ["djkcyl"]
 repository = "https://github.com/djkcyl/nagisa"
@@ -26,9 +26,9 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 dashmap = "6.2.1"
 futures = "0.3.32"
 futures-util = "0.3.32"
-nagisa-core = { version = "0.5.0", path = "crates/nagisa-core" }
-nagisa-log = { version = "0.5.0", path = "crates/nagisa-log" }
-nagisa-types = { version = "0.5.0", path = "crates/nagisa-types" }
+nagisa-core = { version = "0.5.1", path = "crates/nagisa-core" }
+nagisa-log = { version = "0.5.1", path = "crates/nagisa-log" }
+nagisa-types = { version = "0.5.1", path = "crates/nagisa-types" }
 reqwest = { version = "0.13.4", default-features = false }
 serde = "1.0.228"
 serde_json = "1.0.150"
@@ -41,16 +41,16 @@ tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3.23", default-features = false }
 url = "2.5.8"
-nagisa-macros = { version = "0.5.0", path = "crates/nagisa-macros" }
+nagisa-macros = { version = "0.5.1", path = "crates/nagisa-macros" }
 proc-macro-crate = "3.5.0"
 proc-macro2 = "1.0.106"
 quote = "1.0.45"
 regex = "1.12.4"
 syn = "2.0.117"
 inventory = "0.3.24"
-nagisa-milky = { version = "0.5.0", path = "crates/nagisa-milky" }
-nagisa-onebot = { version = "0.5.0", path = "crates/nagisa-onebot" }
-nagisa-render = { version = "0.5.0", path = "crates/nagisa-render" }
+nagisa-milky = { version = "0.5.1", path = "crates/nagisa-milky" }
+nagisa-onebot = { version = "0.5.1", path = "crates/nagisa-onebot" }
+nagisa-render = { version = "0.5.1", path = "crates/nagisa-render" }
 cosmic-text = "0.19.0"
 hmac = "0.13.0"
 image = { version = "0.25.10", default-features = false }

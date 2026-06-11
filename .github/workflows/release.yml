@@ -2,14 +2,21 @@ name: Release
 
 # 手动触发:Actions → Release → Run workflow,选版本级别。
 # 需要仓库 secret CARGO_REGISTRY_TOKEN(crates.io 的 publish 权限 token)。
+#
+# 两段式,可断点续传:
+# 1) 升版段(cargo release --no-publish):升版 + 内部约束 + README 替换 → 提交
+#    「Release X.Y.Z」→ 注解 tag → push——SCM 状态先落地,发布再炸仓库也不丢痕。
+# 2) 发布段:按拓扑序逐包 cargo publish,「already uploaded」视为已发跳过(幂等)。
+#    发布段半途失败(cargo 批量 publish 有确认竞态的前科)→ 重跑选 level=resume:
+#    跳过升版,按仓库当前版本把没发上去的包补完,绝不会多升一版。
 
 on:
   workflow_dispatch:
     inputs:
       level:
-        description: 版本级别
+        description: 版本级别(resume = 不升版,只补发未发布的包)
         type: choice
-        options: [minor, patch, major]
+        options: [minor, patch, major, resume]
         default: minor
         required: true
 
@@ -39,9 +46,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # 升版(含内部依赖约束与 README 示例)→ 提交 → 逐 crate 验证发布 → 打 tag → push。
-      # 行为全部由 release.toml / crates/nagisa/release.toml 定义。
-      - name: 发版
-        run: cargo release ${{ inputs.level }} --execute --no-confirm
+      # 升版 + 提交 + tag + push(不发包)。行为由 release.toml / crates/nagisa/release.toml 定义。
+      - name: 升版推送
+        if: inputs.level != 'resume'
+        run: cargo release ${{ inputs.level }} --execute --no-confirm --no-publish
+
+      # 拓扑序逐包发布;已在 registry 的版本跳过,故半途失败可用 resume 重入。
+      - name: 逐包发布
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          for c in nagisa-types nagisa-macros nagisa-render nagisa-core nagisa-log nagisa-onebot nagisa-milky nagisa; do
+            echo "::group::publish $c"
+            if ! cargo publish -p "$c" 2>&1 | tee /tmp/publish.log; then
+              if grep -q "already uploaded\|is already uploaded\|already exists" /tmp/publish.log; then
+                echo "$c 该版本已在 registry,跳过"
+              else
+                echo "::endgroup::"
+                exit 1
+              fi
+            fi
+            echo "::endgroup::"
+          done

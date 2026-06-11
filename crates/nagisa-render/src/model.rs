@@ -34,7 +34,7 @@ pub enum Block {
     List(List),
     /// 引用块(裹块,可嵌套)。
     Quote(Vec<Block>),
-    /// 代码块(等宽、带底色;不做语法高亮)。
+    /// 代码块(等宽、带底色;按语言标签做轻量语法上色,认不出整块默认色)。
     Code {
         /// 语言标签;有则在代码盒右上角渲染成小标签,可缺。
         lang: Option<String>,
@@ -106,11 +106,20 @@ pub struct TableStyle {
     /// 拉伸铺满可用宽:列宽合计不足时把富余宽度按比例分给自适应列(全是固定列则整体
     /// 等比放大)。默认关——窄表保持自然宽。
     pub expand: bool,
+    /// 整表水平对齐(窄于内容宽时生效;`expand` 开了自然铺满,无所谓对齐)。
+    pub align: Align,
 }
 
 impl Default for TableStyle {
     fn default() -> Self {
-        Self { pad_x: None, pad_y: None, grid: TableGrid::default(), header_fill: true, expand: false }
+        Self {
+            pad_x: None,
+            pad_y: None,
+            grid: TableGrid::default(),
+            header_fill: true,
+            expand: false,
+            align: Align::Left,
+        }
     }
 }
 

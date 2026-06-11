@@ -31,6 +31,19 @@ impl Insets {
     }
 }
 
+/// 代码块语法上色盘。词类口径见 `highlight` 模块;未覆盖区间用 [`Theme::code_text`]。
+#[derive(Clone, Copy, Debug)]
+pub struct CodePalette {
+    /// 关键字色。
+    pub keyword: Color,
+    /// 数字 / 常量字面量色。
+    pub literal: Color,
+    /// 字符串色。
+    pub string: Color,
+    /// 注释色。
+    pub comment: Color,
+}
+
 /// 视觉主题:配色 + 字族 + 字号体系。预设见 [`Theme::light`] / [`Theme::dark`]。
 #[derive(Clone, Debug)]
 pub struct Theme {
@@ -46,6 +59,8 @@ pub struct Theme {
     pub code_bg: Color,
     /// 代码文字色。
     pub code_text: Color,
+    /// 代码块语法上色盘(关键字 / 字面量 / 字符串 / 注释)。
+    pub code_palette: CodePalette,
     /// `==高亮==` 的默认底色。
     pub highlight: Color,
     /// 表格 / 网格的边框线色(比 `muted` 更淡)。
@@ -79,6 +94,12 @@ impl Theme {
             muted: Color::rgb(0x6e, 0x77, 0x81),
             code_bg: Color::rgb(0xf3, 0xf4, 0xf6),
             code_text: Color::rgb(0x1f, 0x23, 0x28),
+            code_palette: CodePalette {
+                keyword: Color::rgb(0xcf, 0x22, 0x2e),
+                literal: Color::rgb(0x05, 0x50, 0xae),
+                string: Color::rgb(0x0a, 0x30, 0x69),
+                comment: Color::rgb(0x6e, 0x77, 0x81),
+            },
             highlight: Color::rgb(0xff, 0xf1, 0xa8),
             border: Color::rgb(0xe5, 0xe7, 0xeb),
             ..Self::common()
@@ -94,6 +115,12 @@ impl Theme {
             muted: Color::rgb(0x8b, 0x94, 0x9e),
             code_bg: Color::rgb(0x16, 0x1b, 0x22),
             code_text: Color::rgb(0xe6, 0xed, 0xf3),
+            code_palette: CodePalette {
+                keyword: Color::rgb(0xff, 0x7b, 0x72),
+                literal: Color::rgb(0x79, 0xc0, 0xff),
+                string: Color::rgb(0xa5, 0xd6, 0xff),
+                comment: Color::rgb(0x8b, 0x94, 0x9e),
+            },
             highlight: Color::rgb(0x57, 0x4a, 0x1a),
             border: Color::rgb(0x30, 0x36, 0x3d),
             ..Self::common()
@@ -110,6 +137,12 @@ impl Theme {
             muted: Color::rgb(0, 0, 0),
             code_bg: Color::rgb(0, 0, 0),
             code_text: Color::rgb(0, 0, 0),
+            code_palette: CodePalette {
+                keyword: Color::rgb(0, 0, 0),
+                literal: Color::rgb(0, 0, 0),
+                string: Color::rgb(0, 0, 0),
+                comment: Color::rgb(0, 0, 0),
+            },
             highlight: Color::rgb(0, 0, 0),
             border: Color::rgb(0, 0, 0),
             font_sans: "Noto Sans SC".to_string(), // 内置

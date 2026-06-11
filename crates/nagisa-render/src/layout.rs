@@ -125,6 +125,11 @@ pub(crate) fn layout_document(doc: &Document, opts: &RenderOptions) -> Result<La
     if [pad.top, pad.right, pad.bottom, pad.left].iter().any(|v| !v.is_finite() || *v < 0.0) {
         return Err(Error::Layout("内边距必须为非负且有限".into()));
     }
+    let th = &opts.theme;
+    if !th.base_size.is_finite() || th.base_size <= 0.0 || !th.line_height.is_finite() || th.line_height <= 0.0
+    {
+        return Err(Error::Layout("基准字号 / 行高必须为正且有限".into()));
+    }
     let content_w = ((opts.width - pad.left - pad.right) * sc).max(1.0);
     let x_left = pad.left * sc;
 
@@ -390,14 +395,38 @@ impl LayoutCtx<'_> {
             let th = self.emit_text(&tag, Align::Right, base, false, ix, y_bg + pad * 0.5, iw);
             y_text = y_bg + pad * 0.5 + th + base * sc * 0.1;
         }
-        let inlines = vec![Inline::Text {
-            text: text.to_string(),
+        // 语法上色:按语言切词,词上色、空当默认色;认不出的语言整块默认色。
+        let mono = |seg: &str, color: Color| Inline::Text {
+            text: seg.to_string(),
             style: TextStyle {
                 font: FontRole::Mono,
-                color: Some(self.opts.theme.code_text),
+                color: Some(color),
                 ..TextStyle::default()
             },
-        }];
+        };
+        let pal = self.opts.theme.code_palette;
+        let deft = self.opts.theme.code_text;
+        let mut inlines = Vec::new();
+        let mut cur = 0usize;
+        for (r, kind) in crate::highlight::tokenize(lang.unwrap_or(""), text) {
+            if r.start > cur {
+                inlines.push(mono(&text[cur..r.start], deft));
+            }
+            let color = match kind {
+                crate::highlight::TokenKind::Keyword => pal.keyword,
+                crate::highlight::TokenKind::Literal => pal.literal,
+                crate::highlight::TokenKind::StringLit => pal.string,
+                crate::highlight::TokenKind::Comment => pal.comment,
+            };
+            inlines.push(mono(&text[r.clone()], color));
+            cur = r.end;
+        }
+        if cur < text.len() {
+            inlines.push(mono(&text[cur..], deft));
+        }
+        if inlines.is_empty() {
+            inlines.push(mono(text, deft));
+        }
         let h = self.emit_text(&inlines, Align::Left, base, false, ix, y_text, iw);
         let bg_h = y_text + h + pad - y_bg;
         self.items.push(DisplayItem::Rect {
@@ -679,7 +708,8 @@ impl LayoutCtx<'_> {
             return;
         }
         self.y += base * sc * 0.3;
-        let gap = c.gap.map(|g| g * sc).unwrap_or(base * sc * 0.6);
+        // 不套 safe_px:MIN_PX=1 会把合法的 gap=0 抬成 1;只拦非有限与负值。
+        let gap = c.gap.filter(|g| g.is_finite() && *g >= 0.0).map(|g| g * sc).unwrap_or(base * sc * 0.6);
         let avail = (w - gap * (cols.len() - 1) as f32).max(1.0);
         let total_w: f32 = cols.iter().map(|col| col.weight).sum();
 
@@ -771,11 +801,18 @@ impl LayoutCtx<'_> {
             return;
         }
         self.y += base * sc * 0.3;
-        let pad = t.style.pad_x.unwrap_or(base * 0.32) * sc;
-        let pad_v = t.style.pad_y.unwrap_or(base * 0.26) * sc;
+        // 不套 safe_px(MIN_PX=1 吃掉合法的 0):只拦非有限与负值,缺省回主题口径。
+        let pad = t.style.pad_x.filter(|v| v.is_finite() && *v >= 0.0).unwrap_or(base * 0.32) * sc;
+        let pad_v = t.style.pad_y.filter(|v| v.is_finite() && *v >= 0.0).unwrap_or(base * 0.26) * sc;
         let widths = self.solve_widths(t, ncols, w, pad);
 
         let table_w: f32 = widths.iter().sum();
+        // 窄表水平对齐(铺满时没有富余,偏移自然为 0)。
+        let x = x + match t.style.align {
+            Align::Center => ((w - table_w) / 2.0).max(0.0),
+            Align::Right => (w - table_w).max(0.0),
+            Align::Left | Align::Justify => 0.0,
+        };
         let mut col_x = Vec::with_capacity(ncols);
         let mut cx = x;
         for &cw in &widths {
@@ -895,6 +932,7 @@ impl LayoutCtx<'_> {
         let (base, sc) = (self.opts.theme.base_size, self.sc);
         let row_top = self.y;
         let y_text = row_top + pad_v;
+        let insert_at = self.items.len(); // 行底色插回此处:垫在文字装饰(高亮/码底)之下
         let mut content_h = 0.0f32;
         for (k, cell) in cells.iter().enumerate() {
             if k >= widths.len() {
@@ -909,8 +947,9 @@ impl LayoutCtx<'_> {
             content_h = base * sc * self.opts.theme.line_height;
         }
         let row_bottom = y_text + content_h + pad_v;
+        let mut fills: Vec<DisplayItem> = Vec::new();
         if header && t.style.header_fill {
-            self.items.push(DisplayItem::Rect {
+            fills.push(DisplayItem::Rect {
                 x: table_x,
                 y: row_top,
                 w: table_w,
@@ -920,13 +959,13 @@ impl LayoutCtx<'_> {
                 layer: RectLayer::Under,
             });
         }
-        // 单元格背景填色(盖在表头浅底之上、字形之下)。
+        // 单元格背景填色(盖在表头浅底之上、文字装饰之下)。
         for (k, cell) in cells.iter().enumerate() {
             if k >= widths.len() {
                 break;
             }
             if let Some(bg) = cell.bg {
-                self.items.push(DisplayItem::Rect {
+                fills.push(DisplayItem::Rect {
                     x: col_x[k],
                     y: row_top,
                     w: widths[k],
@@ -937,6 +976,7 @@ impl LayoutCtx<'_> {
                 });
             }
         }
+        self.items.splice(insert_at..insert_at, fills);
         self.y = row_bottom;
     }
 

@@ -9,7 +9,7 @@ description = "Nagisa typesetting engine: markup / builder documents to images (
 
 [dependencies]
 cosmic-text = { workspace = true }
-image = { workspace = true, features = ["png", "webp"] }
+image = { workspace = true, features = ["png", "webp", "jpeg", "gif"] }
 ruzstd = { workspace = true }
 thiserror = { workspace = true }
 tiny-skia = { workspace = true }

@@ -36,6 +36,22 @@ fn dedent(s: &str, n: usize) -> String {
 
 /// 把一串行解析成块序列。
 fn parse_blocks(lines: &[String]) -> Vec<Block> {
+    parse_blocks_at(lines, 0)
+}
+
+/// 嵌套容器(引用 / 围栏 / 列表 / 栏)的最大递归深度:外部输入构造的深嵌套
+/// 会真把解析栈打爆(abort 不可捕获),超限的内层一律按普通段落收。
+const MAX_DEPTH: usize = 64;
+
+fn parse_blocks_at(lines: &[String], depth: usize) -> Vec<Block> {
+    if depth > MAX_DEPTH {
+        let text = lines.join("\n");
+        let t = text.trim();
+        if t.is_empty() {
+            return Vec::new();
+        }
+        return vec![Block::Paragraph { inlines: inline::parse_inlines(t), align: Align::Left }];
+    }
     let mut blocks = Vec::new();
     let mut i = 0;
     while i < lines.len() {
@@ -47,16 +63,17 @@ fn parse_blocks(lines: &[String]) -> Vec<Block> {
         let ind = indent_of(line);
         let content = line[ind..].to_string();
 
-        // 代码围栏 ```lang ... ```
-        if let Some(lang) = content.strip_prefix("```") {
-            let lang = lang.trim().to_string();
+        // 代码围栏 ```lang ... ```(开栏反引号可多于 3,闭栏须同长及以上且不带别的字)
+        if content.starts_with("```") {
+            let ticks = content.bytes().take_while(|b| *b == b'`').count();
+            let lang = content[ticks..].trim().to_string();
             let mut text = Vec::new();
             i += 1;
-            while i < lines.len() && !lines[i].trim_start().starts_with("```") {
+            while i < lines.len() && !is_code_fence_close(&lines[i], ticks) {
                 text.push(lines[i].clone());
                 i += 1;
             }
-            i += 1; // 跳过闭合 ```（缺失也无妨）
+            i += 1; // 跳过闭合（缺失也无妨）
             blocks.push(Block::Code {
                 lang: if lang.is_empty() { None } else { Some(lang) },
                 text: text.join("\n"),
@@ -70,18 +87,21 @@ fn parse_blocks(lines: &[String]) -> Vec<Block> {
             let (word, attrs) = split_fence_word(content[3..].trim());
             let inner = gather_div(lines, &mut i); // i 已跳到闭合之后
             if word == "columns" {
-                blocks.push(Block::Columns(Columns { cols: parse_columns(&inner), gap: None }));
+                let (cols, mut stray) = parse_columns(&inner, depth + 1);
+                blocks.push(Block::Columns(Columns { cols, gap: None }));
+                blocks.append(&mut stray); // 栏外散行不丢:排在栏块之后
+
             } else if word == "panel" {
                 blocks.push(Block::Panel(Panel {
-                    blocks: parse_blocks(&inner),
+                    blocks: parse_blocks_at(&inner, depth + 1),
                     decor: panel_decor(attrs),
                 }));
             } else if let Some(align) = align_from_word(&word) {
-                let mut sub = parse_blocks(&inner);
+                let mut sub = parse_blocks_at(&inner, depth + 1);
                 apply_align(&mut sub, align);
                 blocks.append(&mut sub);
             } else {
-                blocks.append(&mut parse_blocks(&inner)); // 未知围栏:透明容器
+                blocks.append(&mut parse_blocks_at(&inner, depth + 1)); // 未知围栏:透明容器
             }
             continue;
         }
@@ -110,7 +130,7 @@ fn parse_blocks(lines: &[String]) -> Vec<Block> {
                 inner.push(r.strip_prefix(' ').unwrap_or(r).to_string());
                 i += 1;
             }
-            blocks.push(Block::Quote(parse_blocks(&inner)));
+            blocks.push(Block::Quote(parse_blocks_at(&inner, depth + 1)));
             continue;
         }
 
@@ -133,6 +153,7 @@ fn parse_blocks(lines: &[String]) -> Vec<Block> {
         if content.contains('|')
             && i + 1 < lines.len()
             && is_table_delim(lines[i + 1].trim())
+            && split_row(lines[i + 1].trim()).len() == split_row(content.trim()).len()
         {
             let (table, next) = parse_table(lines, i);
             blocks.push(Block::Table(table));
@@ -293,21 +314,78 @@ fn block_image(c: &str) -> Option<BlockImage> {
     let c = c.trim();
     let rest = c.strip_prefix("![")?;
     let close_alt = rest.find("](")?;
-    if !c.ends_with(')') {
-        return None;
-    }
-    let alt = &rest[..close_alt];
-    let src = &rest[close_alt + 2..rest.len() - 1];
+    let after_src = &rest[close_alt + 2..];
+    let close_paren = after_src.find(')')?;
+    let src = &after_src[..close_paren];
     if src.is_empty() {
         return None;
     }
-    Some(BlockImage {
+    // 右括号后只允许空白或 `{属性}`,有别的尾巴就不是块级图(退回段落,不吞文字)。
+    let tail = after_src[close_paren + 1..].trim();
+    let attrs = if tail.is_empty() {
+        ""
+    } else if tail.starts_with('{') && tail.ends_with('}') {
+        &tail[1..tail.len() - 1]
+    } else {
+        return None;
+    };
+    let alt = &rest[..close_alt];
+    let mut img = BlockImage {
         src: image_source(src),
         width: None,
         align: Align::Left,
         caption: if alt.trim().is_empty() { None } else { Some(inline::parse_inlines(alt.trim())) },
         decor: crate::model::ImageDecor::default(),
-    })
+    };
+    apply_image_attrs(&mut img, attrs);
+    Some(img)
+}
+
+/// 块级图尾部属性:`width=50%|320`(百分比或逻辑像素)、`align=center|right|left`、
+/// `rounded=px`、`shadow`(标志)、`border=#hex`(线宽固定 2,要细调走构建器)。
+fn apply_image_attrs(img: &mut BlockImage, attrs: &str) {
+    for a in parse_attrs(attrs) {
+        match a {
+            Attr::Kv(k, v) => match k.as_str() {
+                "width" => {
+                    if let Some(pct) = v.strip_suffix('%') {
+                        if let Ok(x) = pct.parse::<f32>() {
+                            if x.is_finite() && x > 0.0 {
+                                img.width = Some(crate::model::Length::Percent(x));
+                            }
+                        }
+                    } else if let Ok(x) = v.parse::<f32>() {
+                        if x.is_finite() && x > 0.0 {
+                            img.width = Some(crate::model::Length::Px(x));
+                        }
+                    }
+                }
+                "align" => {
+                    if let Some(al) = align_from_word(&v) {
+                        img.align = al;
+                    }
+                }
+                "rounded" => {
+                    if let Ok(r) = v.parse::<f32>() {
+                        if r.is_finite() && r > 0.0 {
+                            img.decor.radius = r;
+                        }
+                    }
+                }
+                "border" => {
+                    if let Some(color) = Color::hex(&v) {
+                        img.decor.border = Some(ImageBorder { width: 2.0, color });
+                    }
+                }
+                _ => {}
+            },
+            Attr::Flag(f) => {
+                if f == "shadow" {
+                    img.decor.shadow = Some(Shadow::default());
+                }
+            }
+        }
+    }
 }
 
 /// `@名字` → `Named`,否则 `Path`。
@@ -339,9 +417,16 @@ fn gather_div(lines: &[String], i: &mut usize) -> Vec<String> {
     *i += 1;
     let mut inner = Vec::new();
     let mut depth = 1usize;
+    let mut code_ticks = 0usize; // > 0 = 在代码围栏里,::: 不算数
     while *i < lines.len() {
         let t = lines[*i].trim();
-        if t == ":::" {
+        if code_ticks > 0 {
+            if is_code_fence_close(&lines[*i], code_ticks) {
+                code_ticks = 0;
+            }
+        } else if t.starts_with("```") {
+            code_ticks = t.bytes().take_while(|b| *b == b'`').count();
+        } else if t == ":::" {
             depth -= 1;
             if depth == 0 {
                 *i += 1;
@@ -356,29 +441,41 @@ fn gather_div(lines: &[String], i: &mut usize) -> Vec<String> {
     inner
 }
 
+/// 代码围栏闭合行:去缩进后是 ≥ `ticks` 枚反引号、且没有别的非空内容。
+fn is_code_fence_close(line: &str, ticks: usize) -> bool {
+    let t = line.trim();
+    let n = t.bytes().take_while(|b| *b == b'`').count();
+    n >= ticks && t[n..].trim().is_empty()
+}
+
 /// 把 `::: columns` 的内层解析成若干栏:每个直接的 `::: col [权重]` 子围栏一栏。
-fn parse_columns(inner: &[String]) -> Vec<Column> {
+fn parse_columns(inner: &[String], depth: usize) -> (Vec<Column>, Vec<Block>) {
     let mut cols = Vec::new();
+    let mut stray_lines: Vec<String> = Vec::new();
     let mut i = 0;
     while i < inner.len() {
         let (head, attrs) =
             split_fence_word(inner[i].trim().strip_prefix(":::").unwrap_or("").trim());
         let mut parts = head.split_whitespace();
         if parts.next() == Some("col") {
-            let weight =
-                parts.next().and_then(|s| s.parse::<f32>().ok()).filter(|w| *w > 0.0).unwrap_or(1.0);
+            let weight = parts
+                .next()
+                .and_then(|s| s.parse::<f32>().ok())
+                .filter(|w| w.is_finite() && *w > 0.0)
+                .unwrap_or(1.0);
             let col_lines = gather_div(inner, &mut i);
-            let mut blocks = parse_blocks(&col_lines);
+            let mut blocks = parse_blocks_at(&col_lines, depth);
             // 带装饰属性的栏 = 整栏一个面板(layout 把它拉齐到本行最高栏)。
             if !attrs.is_empty() {
                 blocks = vec![Block::Panel(Panel { blocks, decor: panel_decor(attrs) })];
             }
             cols.push(Column { blocks, weight });
         } else {
+            stray_lines.push(inner[i].clone()); // 栏外行收着,随后按普通块解析
             i += 1;
         }
     }
-    cols
+    (cols, parse_blocks_at(&stray_lines, depth))
 }
 
 /// 围栏开启词拆成「词(含权重等)+ `{}` 内的属性串」;无属性时属性串为空。
@@ -519,6 +616,7 @@ fn apply_align(blocks: &mut [Block], align: Align) {
             Block::Heading { align: a, .. } | Block::Paragraph { align: a, .. } => *a = align,
             Block::Quote(inner) => apply_align(inner, align),
             Block::Panel(p) => apply_align(&mut p.blocks, align),
+            Block::Image(bi) => bi.align = align,
             Block::List(list) => {
                 for it in &mut list.items {
                     apply_align(&mut it.blocks, align);
@@ -537,15 +635,14 @@ fn split_trailing_attrs(s: &str) -> (String, Align) {
             let before = &t[..open];
             if before.ends_with(' ') || before.is_empty() {
                 let inside = &t[open + 1..t.len() - 1];
-                let align = parse_attrs(inside)
-                    .iter()
-                    .find_map(|a| match a {
-                        Attr::Kv(k, v) if k == "align" => align_from_word(v),
-                        Attr::Flag(f) => align_from_word(f),
-                        _ => None,
-                    })
-                    .unwrap_or(Align::Left);
-                return (before.trim_end().to_string(), align);
+                // 只认得 align:认不出的 {…} 保留为正文,不吞。
+                if let Some(align) = parse_attrs(inside).iter().find_map(|a| match a {
+                    Attr::Kv(k, v) if k == "align" => align_from_word(v),
+                    Attr::Flag(f) => align_from_word(f),
+                    _ => None,
+                }) {
+                    return (before.trim_end().to_string(), align);
+                }
             }
         }
     }

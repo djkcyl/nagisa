@@ -147,16 +147,28 @@ fn emphasis(
 }
 
 /// 在 `after` 里找 `d` 的闭合位置;`_` 族要求闭合后不紧跟词字符(否则继续往后找)。
+/// 行内码段 `` `…` `` 整段跳过——码内的记号是字面量,强调闭合不落在码里
+/// (`*a `x*y` b*` 的闭合是末尾那枚);孤反引号按字面继续找。
 fn find_close(after: &str, d: &str, underscore: bool) -> Option<usize> {
     let mut from = 0;
-    loop {
-        let pos = after[from..].find(d)? + from;
-        if underscore && after[pos + d.len()..].chars().next().is_some_and(is_word) {
-            from = pos + d.len();
-            continue;
+    while from < after.len() {
+        let rest = &after[from..];
+        if d != "`" && rest.starts_with('`') {
+            if let Some(p) = rest[1..].find('`') {
+                from += 1 + p + 1;
+                continue;
+            }
         }
-        return Some(pos);
+        if let Some(after_d) = rest.strip_prefix(d) {
+            if underscore && after_d.chars().next().is_some_and(is_word) {
+                from += d.len();
+                continue;
+            }
+            return Some(from);
+        }
+        from += rest.chars().next().map_or(1, char::len_utf8);
     }
+    None
 }
 
 /// ASCII 词字符(字母 / 数字 / `_`)。`_` 族的词内判定只看 ASCII:CJK 邻接不算词内,
@@ -220,7 +232,7 @@ fn apply_attrs(mut st: TextStyle, attrs: &str) -> TextStyle {
                 }
                 "size" => {
                     if let Ok(m) = v.parse::<f32>() {
-                        if m > 0.0 {
+                        if m.is_finite() && m > 0.0 {
                             st.size = m;
                         }
                     }

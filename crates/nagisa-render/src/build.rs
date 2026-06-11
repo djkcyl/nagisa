@@ -352,6 +352,11 @@ impl StyleBuilder {
         self.style.font = role;
         self
     }
+    /// 链接样式:无显式色时按主题强调色渲(与标记文本 `[文字](URL)` 同款;引擎不存 URL)。
+    pub fn link(&mut self) -> &mut Self {
+        self.style.link = true;
+        self
+    }
     /// 圈注:以这段文字为中心画一圈椭圆描边(缺省按文字宽窄自适应、颜色跟随墨色;
     /// 不占布局尺寸,圈溢出到行距)。尺寸经 [`ring_radius`](Self::ring_radius) /
     /// [`ring_radii`](Self::ring_radii) 给定后与文字宽窄无关。
@@ -418,7 +423,6 @@ impl StyleBuilder {
         self.style.dot.get_or_insert_default().each = true;
         self
     }
-    /// 文字阴影(默认形态:下坠 2 逻辑像素、软化 6、黑 25%)。
     /// 边注挂右:这段挂到本行内容的右外侧,参与绘制不参与布局——居中 / 对齐按其余
     /// 内容算,边注不挤不偏(「当前」「✓」这类行尾标记用)。
     pub fn aside_right(&mut self) -> &mut Self {
@@ -430,6 +434,7 @@ impl StyleBuilder {
         self.style.aside = Some(crate::model::AsideSide::Left);
         self
     }
+    /// 文字阴影(默认形态:下坠 2 逻辑像素、软化 6、黑 25%)。
     pub fn shadow(&mut self) -> &mut Self {
         self.style.shadow = Some(Shadow::default());
         self
@@ -468,6 +473,20 @@ impl TableBuilder {
         S: Into<String>,
     {
         self.rows.push(cells.into_iter().map(text_cell).collect());
+        self
+    }
+    /// 设表头(富文本:每格一个闭包拼行内)。
+    pub fn head_rich<R>(&mut self, f: impl FnOnce(&mut RowBuilder) -> R) -> &mut Self {
+        let mut rb = RowBuilder { cells: Vec::new() };
+        let _ = f(&mut rb);
+        self.header = Some(rb.cells);
+        self
+    }
+    /// 加一数据行(富文本:每格一个闭包拼行内)。
+    pub fn row_rich<R>(&mut self, f: impl FnOnce(&mut RowBuilder) -> R) -> &mut Self {
+        let mut rb = RowBuilder { cells: Vec::new() };
+        let _ = f(&mut rb);
+        self.rows.push(rb.cells);
         self
     }
     /// 设各列对齐(从第 0 列起)。
@@ -524,33 +543,34 @@ impl TableBuilder {
         }
         self
     }
-    /// 整列(含表头)背景填色。
+    /// 整列(含表头)背景填色(非法色忽略,不动已设值)。
     pub fn col_fill(&mut self, col: usize, hex: &str) -> &mut Self {
-        let bg = Color::hex(hex);
+        let Some(bg) = Color::hex(hex) else { return self };
         if let Some(h) = self.header.as_mut().and_then(|h| h.get_mut(col)) {
-            h.bg = bg;
+            h.bg = Some(bg);
         }
         for row in &mut self.rows {
             if let Some(c) = row.get_mut(col) {
-                c.bg = bg;
+                c.bg = Some(bg);
             }
         }
         self
     }
-    /// 整行(数据行)背景填色。
+    /// 整行(数据行)背景填色(非法色忽略,不动已设值)。
     pub fn row_fill(&mut self, row: usize, hex: &str) -> &mut Self {
-        let bg = Color::hex(hex);
+        let Some(bg) = Color::hex(hex) else { return self };
         if let Some(r) = self.rows.get_mut(row) {
             for c in r.iter_mut() {
-                c.bg = bg;
+                c.bg = Some(bg);
             }
         }
         self
     }
-    /// 单格(数据行 / 列)背景填色。
+    /// 单格(数据行 / 列)背景填色(非法色忽略,不动已设值)。
     pub fn cell_fill(&mut self, row: usize, col: usize, hex: &str) -> &mut Self {
+        let Some(bg) = Color::hex(hex) else { return self };
         if let Some(c) = self.rows.get_mut(row).and_then(|r| r.get_mut(col)) {
-            c.bg = Color::hex(hex);
+            c.bg = Some(bg);
         }
         self
     }
@@ -570,6 +590,11 @@ impl TableBuilder {
     /// 拉伸铺满可用宽(富余宽度按比例分给自适应列;全固定列则整体等比放大)。
     pub fn expand(&mut self) -> &mut Self {
         self.style.expand = true;
+        self
+    }
+    /// 整表水平对齐(窄表生效;别与 [`expand`](Self::expand) 混用——铺满了没得对齐)。
+    pub fn table_align(&mut self, a: Align) -> &mut Self {
+        self.style.align = a;
         self
     }
     /// 外框线开关。
@@ -601,6 +626,26 @@ impl TableBuilder {
     }
 }
 
+/// 富文本行构建器([`TableBuilder::head_rich`] / [`TableBuilder::row_rich`] 的闭包参数)。
+pub struct RowBuilder {
+    cells: Vec<Cell>,
+}
+
+impl RowBuilder {
+    /// 加一格(闭包拼行内,粗细 / 色 / 行内码皆可)。
+    pub fn cell<R>(&mut self, f: impl FnOnce(&mut ParaBuilder) -> R) -> &mut Self {
+        let mut pb = ParaBuilder::new();
+        let _ = f(&mut pb);
+        self.cells.push(Cell { inlines: pb.into_inlines(), bg: None });
+        self
+    }
+    /// 加一格纯文字(与 [`TableBuilder::row`] 同款便捷)。
+    pub fn text(&mut self, s: impl Into<String>) -> &mut Self {
+        self.cells.push(text_cell(s));
+        self
+    }
+}
+
 /// 纯文字单元格。
 fn text_cell(s: impl Into<String>) -> Cell {
     Cell { inlines: vec![Inline::Text { text: s.into(), style: TextStyle::default() }], bg: None }
@@ -624,17 +669,20 @@ pub struct ColumnsBuilder {
 }
 
 impl ColumnsBuilder {
-    /// 栏间距(逻辑像素)。
+    /// 栏间距(逻辑像素;非有限或 < 0 忽略)。
     pub fn gap(&mut self, g: f32) -> &mut Self {
-        self.gap = Some(g);
+        if g.is_finite() && g >= 0.0 {
+            self.gap = Some(g);
+        }
         self
     }
     /// 一栏(权重 1.0)。
     pub fn col<R>(&mut self, f: impl FnOnce(&mut Doc) -> R) -> &mut Self {
         self.col_weighted(1.0, f)
     }
-    /// 一栏(指定宽度权重)。
+    /// 一栏(指定宽度权重;非有限或 ≤ 0 回退 1.0,与标记前端口径一致)。
     pub fn col_weighted<R>(&mut self, weight: f32, f: impl FnOnce(&mut Doc) -> R) -> &mut Self {
+        let weight = if weight.is_finite() && weight > 0.0 { weight } else { 1.0 };
         let mut inner = Doc::new();
         let _ = f(&mut inner);
         self.cols.push(Column { blocks: inner.blocks, weight });
@@ -644,12 +692,13 @@ impl ColumnsBuilder {
     pub fn panel<R>(&mut self, f: impl FnOnce(&mut PanelBuilder) -> R) -> &mut Self {
         self.panel_weighted(1.0, f)
     }
-    /// 一栏卡片(指定宽度权重)。
+    /// 一栏卡片(指定宽度权重;非法权重回退 1.0)。
     pub fn panel_weighted<R>(
         &mut self,
         weight: f32,
         f: impl FnOnce(&mut PanelBuilder) -> R,
     ) -> &mut Self {
+        let weight = if weight.is_finite() && weight > 0.0 { weight } else { 1.0 };
         let mut pb = PanelBuilder::new();
         let _ = f(&mut pb);
         self.cols.push(Column { blocks: vec![Block::Panel(pb.into_panel())], weight });

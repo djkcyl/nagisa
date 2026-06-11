@@ -3,8 +3,9 @@
 //!
 //! 矩形(背景 / 高亮 / 分割线 / 引用条 / 代码底 / 表格网格)走 tiny-skia 的抗锯齿填充;字形由
 //! cosmic-text 的 `SwashCache` 栅格成覆盖率 / 彩色位图,按笔位 premultiplied-alpha 合成进画布;
-//! 内嵌图同样合成(可圆角裁切)。顺序:背景 → 衬底矩形 → 投影 → 图 → 角标底板/边框 →
-//! 字形(影先字后) → 覆盖矩形(下划 / 删除)。
+//! 内嵌图同样合成(可圆角裁切)。顺序:背景 → 垫底影(面板投影,衬在自家底色下)→
+//! 衬底矩形 → 普通投影(图片)→ 图 → 角标底板/边框 → 字形(影先字后)→
+//! 覆盖矩形(下划 / 删除)。
 
 use cosmic_text::{SwashContent, SwashImage};
 use image::codecs::png::{CompressionType, FilterType};
@@ -163,11 +164,13 @@ fn draw_shadow(pix: &mut Pixmap, s: &ShadowItem) {
         draw_rect(pix, x, y, w, h, color, radius);
         return;
     }
-    // 蒙版画布:四周各留 2×blur 余量装得下扩散。
+    // 蒙版画布:四周各留 2×blur 余量装得下扩散。blur 先消毒(非有限 / 离谱值是
+    // 上游脏数据,夹到 512px 影子已糊成雾),尺寸乘法用 checked 防回绕绕过守卫。
+    let blur = if blur.is_finite() { blur.clamp(0.0, 512.0) } else { 0.0 };
     let pad = (blur * 2.0).ceil();
     let mw = (w + pad * 2.0).ceil() as usize;
     let mh = (h + pad * 2.0).ceil() as usize;
-    if mw == 0 || mh == 0 || mw * mh > 64_000_000 {
+    if mw == 0 || mh == 0 || mw.checked_mul(mh).is_none_or(|n| n > 64_000_000) {
         return; // 蒙版过大(异常尺寸)直接放弃,不让一张影子吃光内存
     }
     // 1) 矩形(含圆角)覆盖率蒙版。
@@ -326,16 +329,19 @@ fn draw_rect(pix: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, color: Color, rad
 
 fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<tiny_skia::Path> {
     let r = r.min(w / 2.0).min(h / 2.0);
+    // 圆弧的三次贝塞尔近似(kappa):单段 quad 拐角外凸约 6%,与投影蒙版的精确
+    // 圆角(corner_coverage)对不齐,叠在一起能看出错位。
+    let k = r * 0.552_285;
     let mut pb = PathBuilder::new();
     pb.move_to(x + r, y);
     pb.line_to(x + w - r, y);
-    pb.quad_to(x + w, y, x + w, y + r);
+    pb.cubic_to(x + w - r + k, y, x + w, y + r - k, x + w, y + r);
     pb.line_to(x + w, y + h - r);
-    pb.quad_to(x + w, y + h, x + w - r, y + h);
+    pb.cubic_to(x + w, y + h - r + k, x + w - r + k, y + h, x + w - r, y + h);
     pb.line_to(x + r, y + h);
-    pb.quad_to(x, y + h, x, y + h - r);
+    pb.cubic_to(x + r - k, y + h, x, y + h - r + k, x, y + h - r);
     pb.line_to(x, y + r);
-    pb.quad_to(x, y, x + r, y);
+    pb.cubic_to(x, y + r - k, x + r - k, y, x + r, y);
     pb.close();
     pb.finish()
 }
@@ -420,10 +426,12 @@ fn blit_glyph(
                     blend(dst, color.r, color.g, color.b, color.a, cov);
                 }
                 SwashContent::Color => {
+                    // 彩色字形(emoji):像素自带色,但传入色的 alpha 仍要乘进去——
+                    // 软影的淡色副本、半透明水印里的 emoji 不该实心。
                     let k = ((j * gw + i) * 4) as usize;
                     let (r, g, b, a) =
                         (img.data[k], img.data[k + 1], img.data[k + 2], img.data[k + 3]);
-                    blend(dst, r, g, b, 255, a);
+                    blend(dst, r, g, b, color.a, a);
                 }
             }
         }

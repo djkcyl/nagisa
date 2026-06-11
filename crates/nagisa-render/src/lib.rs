@@ -32,8 +32,9 @@
 //! # 能排什么
 //!
 //! 标题、段落、粗 / 细 / 任意字重、斜 / 下划 / 删除、颜色 / 高亮、字号 / 字族(黑 / 宋 /
-//! 楷 / 等宽)、文字阴影、链接(图片点不了,取文字按强调色渲染)、行内与块级代码(语言标签
-//! 渲染在盒角)、有序 / 无序列表(可嵌套)、任务列表(`- [ ]` / `- [x]` → `□` / `✓`)、引用、
+//! 楷 / 等宽)、文字阴影、链接(图片点不了,取文字按强调色渲染)、行内与块级代码(语言标签渲染在盒角,
+//! 块级带轻量语法上色:rust / json / toml / python / js / shell / c 系,四类词色随主题
+//! [`CodePalette`],认不出的语言整块默认色)、有序 / 无序列表(可嵌套)、任务列表(`- [ ]` / `- [x]` → `□` / `✓`)、引用、
 //! 分割线、图片(缩放 / 对齐 / 图注 + 装饰层:角标 / 边框 / 水印 / 圆角裁切 / 投影,见
 //! [`ImageBuilder`])、左中右两端对齐、多栏并排([`Columns`])、面板([`Panel`]:底色 / 边框 /
 //! 圆角 / 内边距 / 投影的卡片容器,作并排栏整栏时自动拉齐行高;`::: panel {bg=…}` /
@@ -66,6 +67,7 @@
 mod build;
 mod error;
 mod font;
+mod highlight;
 mod layout;
 mod markup;
 mod model;
@@ -86,7 +88,7 @@ pub use model::{
     ListKind, Panel, PanelDecor, Progress, RingMark, Shadow, Table, TableGrid, TableStyle,
     TextStyle, Watermark,
 };
-pub use theme::{Insets, OutputFormat, PageChrome, RenderOptions, Theme};
+pub use theme::{CodePalette, Insets, OutputFormat, PageChrome, RenderOptions, Theme};
 
 /// 解析标记文本并渲染成图片字节(格式由 [`RenderOptions::format`] 决定,默认 PNG)。
 pub fn render_markup(src: &str, opts: &RenderOptions) -> Result<Vec<u8>> {

@@ -5,4 +5,5 @@ tag-message = "Release {{version}}"
 pre-release-replacements = [
   { file = "../../README.md", search = 'nagisa = "[0-9][0-9.]*"', replace = 'nagisa = "{{version}}"' },
   { file = "../../README.md", search = 'nagisa = \{ version = "[0-9][0-9.]*"', replace = 'nagisa = { version = "{{version}}"' },
+  { file = "../nagisa-render/README.md", search = 'nagisa = \{ version = "[0-9][0-9.]*"', replace = 'nagisa = { version = "{{version}}"', min = 0 },
 ]

@@ -324,8 +324,48 @@ fn main() {
         .paragraph(|p| {
             p.text("列宽自适应、「备注」限 170px;积分列加粗,状态列按格上色(背景 + 文字色)。");
         })
+        .heading(3, |h| {
+            h.text("富文本格 + 窄表居中");
+        })
+        .table(|t| {
+            t.head_rich(|r| {
+                r.cell(|p| {
+                    p.bold("项目");
+                })
+                .cell(|p| {
+                    p.styled("状态", |st| {
+                        st.color("#7c3aed");
+                    });
+                });
+            })
+            .row_rich(|r| {
+                r.text("构建").cell(|p| {
+                    p.code("cargo build").text(" ").styled("通过", |st| {
+                        st.color("#166534").bold();
+                    });
+                });
+            })
+            .row_rich(|r| {
+                r.text("装饰垫底").cell(|p| {
+                    p.highlight("高亮").text(" 与格底色不打架");
+                });
+            })
+            .cell_fill(1, 1, "#fef9c3")
+            .table_align(Align::Center);
+        })
         .build();
     write_png("out/table.png", &table);
+
+    // 标记文本块级图属性:尾部 {width/align/rounded/shadow/border},命名来源 @grad。
+    let img_attrs = parse_markup(
+        "## 标记文本图属性\n\n![40% 宽 · 居中 · 圆角 · 投影](@grad){width=40%, align=center, rounded=16, shadow}\n",
+    )
+    .expect("解析图属性样张");
+    let mut img_opts = opts();
+    img_opts.images.insert("grad".into(), gradient_png(480, 240));
+    let png = render_document(&img_attrs, &img_opts).expect("渲染图属性样张");
+    fs::write("out/image-attrs.png", &png).expect("写文件");
+    println!("wrote out/image-attrs.png ({} bytes)", png.len());
 
     // 紧凑度 / 网格控制对比。
     let compact = Doc::new()
@@ -400,6 +440,41 @@ fn main() {
         .progress(1.0, |_| {})
         .build();
     write_png("out/progress.png", &progress);
+
+    // 代码上色样张:四门语言,亮暗双主题各一张。
+    const CODE_MD: &str = r#"## 代码上色
+
+```rust
+/// 求和并打印。注释是注释色。
+fn main() {
+    let nums = vec![1, 2, 3_000, 0xff];
+    let s: i64 = nums.iter().sum();
+    println!("sum = {s}, ok = {}", true); // 行尾注释
+}
+```
+
+```json
+{ "name": "abot", "version": 0.6, "stable": true, "tags": ["bot", "qq"], "extra": null }
+```
+
+```python
+# 阶乘,递归写法
+def fact(n: int) -> int:
+    return 1 if n <= 1 else n * fact(n - 1)
+
+print(f"5! = {fact(5)}", True, None)
+```
+
+```shell
+# 部署脚本片段
+if [ -f .env ]; then
+  export $(cat .env | xargs)  # 读环境
+fi
+echo "deployed at $(date)"
+```
+"#;
+    write_markup("out/code-light.png", CODE_MD, Theme::light());
+    write_markup("out/code-dark.png", CODE_MD, Theme::dark());
 
     // 面板样张:默认卡片 / 自定装饰 / 并排等高卡片 / markup 围栏。
     let panel = Doc::new()
@@ -513,8 +588,10 @@ const FULL_HEAD: &str = r#"# nagisa-render · 全功能样张 {align=center}
 > 引用块:强调色竖条,内容整体内缩,内层还能放块。
 
 ```rust
+/// 语言标签在盒角,词按语言上色。
 fn main() {
-    println!("Hello, 世界"); // 语言标签在盒角
+    let nums = vec![1, 2, 0xff];
+    println!("sum = {}, ok = {}", nums.iter().sum::<i32>(), true);
 }
 ```
 
@@ -526,6 +603,10 @@ fn main() {
 |:--|:-:|--:|
 | 标记文本 | 一大段文字 | 全部 |
 | 构建器 | 从数据生成卡片 | 全部 |
+
+## 块级图属性(标记文本)
+
+![40% 宽 · 居中 · 圆角 · 投影](@grad){width=40%, align=center, rounded=16, shadow}
 "#;
 
 /// 全功能样张的标记文本收尾。
@@ -567,7 +648,36 @@ fn write_full() {
         });
     })
     .paragraph(|p| {
-        p.text("铺满可用宽(expand)、备注列限宽;积分列加粗,状态列按格上色。紧凑度与网格可调:");
+        p.text("铺满可用宽(expand)、备注列限宽;积分列加粗,状态列按格上色。富文本格与窄表居中:");
+    })
+    .table(|t| {
+        t.head_rich(|r| {
+            r.cell(|p| {
+                p.bold("项目");
+            })
+            .cell(|p| {
+                p.styled("状态", |st| {
+                    st.color("#7c3aed");
+                });
+            });
+        })
+        .row_rich(|r| {
+            r.text("构建").cell(|p| {
+                p.code("cargo build").text(" ").styled("通过", |st| {
+                    st.color("#166534").bold();
+                });
+            });
+        })
+        .row_rich(|r| {
+            r.text("装饰垫底").cell(|p| {
+                p.highlight("高亮").text(" 与格底色不打架");
+            });
+        })
+        .cell_fill(1, 1, "#fef9c3")
+        .table_align(Align::Center);
+    })
+    .paragraph(|p| {
+        p.text("紧凑度与网格可调:");
     })
     .columns(|c| {
         c.col(|d| {
@@ -678,7 +788,7 @@ fn write_full() {
     doc.blocks.extend(b.build().blocks);
     doc.blocks.extend(parse_markup(FULL_TAIL).expect("解析样张标记文本").blocks);
 
-    let opts = opts()
+    let mut opts = opts()
         .with_header_chrome(
             PageChrome::rich(|p| {
                 p.styled("nagisa-render", |s| {
@@ -696,6 +806,7 @@ fn write_full() {
                 .band("#1f2937")
                 .color("#d1d5db"),
         );
+    opts.images.insert("grad".into(), gradient_png(480, 240));
 
     let png = render_document(&doc, &opts).expect("渲染全功能样张");
     fs::write("out/full.png", &png).expect("写文件");

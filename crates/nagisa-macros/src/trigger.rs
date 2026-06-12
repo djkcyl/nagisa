@@ -36,6 +36,30 @@ fn find_args_inner(func: &ItemFn) -> Option<&Type> {
     None
 }
 
+/// handler 是否带名单内类型的形参(按类型路径末段识别,看穿一层 `Option<..>` 包装;
+/// 与 [`find_args_inner`] 同一口径)。
+fn has_param_named(func: &ItemFn, names: &[&str]) -> bool {
+    fn unwrap_option(ty: &Type) -> &Type {
+        if let Type::Path(tp) = ty {
+            if let Some(seg) = tp.path.segments.last() {
+                if seg.ident == "Option" {
+                    if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+                        if let Some(GenericArgument::Type(t)) = ab.args.first() {
+                            return t;
+                        }
+                    }
+                }
+            }
+        }
+        ty
+    }
+    func.sig.inputs.iter().any(|input| {
+        let FnArg::Typed(pt) = input else { return false };
+        let Type::Path(tp) = unwrap_option(&pt.ty) else { return false };
+        tp.path.segments.last().is_some_and(|seg| names.iter().any(|n| seg.ident == n))
+    })
+}
+
 /// 把 `gate=`/`cooldown=` 降级成传给 `trigger_command`/`event_named` 的 `gate` 参数那个
 /// `Option<Rule>` 表达式。两者都缺 ⇒ 字面 `None` token（未门控命令/事件零改动）；否则
 /// `Some(..)`。
@@ -205,22 +229,26 @@ pub(crate) fn expand(args: CommandArgs, func: ItemFn) -> syn::Result<proc_macro2
         }
     };
 
-    // 剩余内容要求。无参命令(无 `args: Args<T>` 形参,或 T 的参数规格为空)**默认**
-    // `no_args`:除呼叫姿势(回复/@bot/空白)外命令词后有任何内容就不算命中——「我的 xxx」
-    // 是日常说话,不该触发「我的」。`exact` 旗标显式升档:整条消息只能是命令词本身,
-    // 连呼叫姿势都不算;它只对无参命令有意义,与 `args: Args<T>` 形参同用是编译错。
+    // 剩余内容要求。无参命令**默认** `no_args`:除前置呼叫姿势(回复/@bot/空白)外命令词后
+    // 有任何内容就不算命中——「我的 xxx」是日常说话,不该触发「我的」。「有参」按形参识别,
+    // 三类等同:`Args<T>`(规格非空)、原始参数(`ArgText`/`CommandArg`)、内联元素
+    // (`At`/`Image`,含 `Option`)。`exact` 旗标显式升档:整条消息只能是命令词本身,
+    // 连呼叫姿势都不算;只对无参命令有意义,与 `Args<T>`/原始参数形参同用是编译错。
     // 正则 / 槽位匹配器形状由作者的模式自己定,不自动收紧(`exact` 同样可用)。
     let args_inner = find_args_inner(&func);
-    if args.exact && args_inner.is_some() {
+    let raw_args = has_param_named(&func, &["ArgText", "CommandArg"]);
+    let inline_elems = has_param_named(&func, &["At", "Image"]);
+    if args.exact && (args_inner.is_some() || raw_args) {
         return Err(syn::Error::new_spanned(
             &func.sig,
-            "`exact` 是无参命令的严格模式(整条消息只能是命令词本身),不能与 `args: Args<T>` 形参同用",
+            "`exact` 是无参命令的严格模式(整条消息只能是命令词本身),不能与 `args: Args<T>` / `ArgText` / `CommandArg` 形参同用",
         ));
     }
     let strict_apply = if args.exact {
         quote! { let m = m.exact(); }
     } else {
         match (&args.kind, &args_inner) {
+            _ if raw_args || inline_elems => quote! {},
             (MatcherKind::Union(_), None) => quote! { let m = m.no_args(); },
             (MatcherKind::Union(_), Some(t)) => quote! {
                 let m = if <#t as #nc::ArgsMeta>::SPECS.is_empty() { m.no_args() } else { m };

@@ -61,6 +61,26 @@ const LOGIN_RETRY_DELAY: Duration = Duration::from_millis(150);
 /// 适配器 → 分发 的事件通道缓冲。
 #[cfg(any(feature = "onebot", feature = "milky"))]
 const EVENT_CHANNEL_CAP: usize = 256;
+/// 关停宽限:shutdown 触发后立即停止接收新事件,给在途 handler 至多这么久把响应发完,
+/// 适配器在此期间保持存活(出站通道可用),到点或排空即彻底收场。
+#[cfg(any(feature = "onebot", feature = "milky"))]
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
+
+/// 启动横幅:logo + 版本 + 协议。多行 art 走 tracing 会被每行的时间戳前缀拆花,直接 stdout。
+#[cfg(any(feature = "onebot", feature = "milky"))]
+fn print_banner(protocol: &str) {
+    println!(
+        concat!(
+            "\n",
+            "┏┓╻┏━┓┏━╸╻┏━┓┏━┓\n",
+            "┃┗┫┣━┫┃╺┓┃┗━┓┣━┫\n",
+            "╹ ╹╹ ╹┗━┛╹┗━┛╹ ╹\n",
+            "nagisa v{} · {} —— 潮平岸阔，风正帆悬。\n"
+        ),
+        env!("CARGO_PKG_VERSION"),
+        protocol,
+    );
+}
 
 /// 应用构建器:把 handler 收集进一个 [`Router`],再让 router 跑在某个协议适配器之上,
 /// 与所有用户登记的服务并行。
@@ -388,6 +408,7 @@ impl App {
     /// 让 app 跑在一个 OneBot v11 端点上。`shutdown` 触发或传输致命失败时返回。
     #[cfg(feature = "onebot")]
     pub async fn run_onebot(self, cfg: nagisa_onebot::OneBotConfig, shutdown: ShutdownToken) -> Result<()> {
+        print_banner("OneBot v11");
         let adapter = nagisa_onebot::OneBotAdapter::new(cfg);
         self.run_with(adapter, shutdown).await
     }
@@ -395,6 +416,7 @@ impl App {
     /// 让 app 跑在一个 Milky 端点上。`shutdown` 触发或传输致命失败时返回。
     #[cfg(feature = "milky")]
     pub async fn run_milky(self, cfg: nagisa_milky::MilkyConfig, shutdown: ShutdownToken) -> Result<()> {
+        print_banner("Milky");
         let adapter = Arc::new(nagisa_milky::MilkyAdapter::new(cfg)?);
         self.run_with(adapter, shutdown).await
     }
@@ -413,11 +435,15 @@ impl App {
         let (tx, rx) = mpsc::channel::<Event>(EVENT_CHANNEL_CAP);
 
         // —— 1. spawn 事件源(自己管 connect + reconnect)。 ——
+        // 适配器持独立的 `hard` token,不直接看根 shutdown:根触发后进入宽限期,传输层
+        // 要继续活着把在途 handler 的出站回复送完;宽限结束才取消 hard、放倒传输。
+        // 期间新到的事件只会堆在通道里(dispatch 已停止读取),不会被处理。
+        let hard = ShutdownToken::new();
         let mut tasks: JoinSet<Result<()>> = JoinSet::new();
         {
             let source = Arc::clone(&adapter);
             let sink = tx.clone();
-            let source_shutdown = shutdown.clone();
+            let source_shutdown = hard.clone();
             tasks.spawn(async move { source.run(sink, source_shutdown).await });
         }
 
@@ -427,12 +453,17 @@ impl App {
         let bot = Bot::new(adapter, self_id);
 
         // —— 3. spawn 分发循环。 ——
+        // `drained` 在 run_dispatch 返回(shutdown 后停止接收、在途 handler 已排空)时取消,
+        // 供宽限期等待者感知「可以收场了」。
+        let drained = ShutdownToken::new();
         {
             let router = Arc::clone(&router);
             let dispatch_shutdown = shutdown.clone();
             let bot = bot.clone(); // dispatch 拿 clone;外层 bot 留给 service bus
+            let done = drained.clone();
             tasks.spawn(async move {
                 run_dispatch(router, bot, rx, dispatch_shutdown).await;
+                done.cancel();
                 Ok(())
             });
         }
@@ -469,7 +500,7 @@ impl App {
         }
 
         // —— 5. 在一个尊重 shutdown 的 select 下 join 所有任务。 ——
-        run_until_done(tasks, shutdown).await
+        run_until_done(tasks, shutdown, hard, drained).await
     }
 }
 
@@ -484,7 +515,12 @@ async fn resolve_self_id(
         if shutdown.is_cancelled() {
             return (Uin(0), String::new());
         }
-        match invoker.get_login_info().await {
+        // 调用可阻塞到动作超时(10s),停机不等它走完。
+        let res = tokio::select! {
+            _ = shutdown.cancelled() => return (Uin(0), String::new()),
+            r = invoker.get_login_info() => r,
+        };
+        match res {
             Ok((uin, nickname)) => {
                 tracing::info!(self_id = uin.0, nickname = %nickname, "resolved bot login info");
                 return (uin, nickname);
@@ -504,13 +540,25 @@ async fn resolve_self_id(
 
 /// await 所有已 spawn 的任务。在 `shutdown` 触发、某个任务返回 `Err`(向上传播,并触发其余
 /// 任务停机)、或全部完成时返回。
+///
+/// `shutdown` 触发时不立刻收场:等 `drained`(dispatch 排空在途 handler)至多
+/// [`SHUTDOWN_GRACE`],期间适配器(持 `hard`)保持存活、在途回复仍能送出;
+/// 排空或到点后取消 `hard`,abort 余下任务。
 #[cfg(any(feature = "onebot", feature = "milky"))]
-async fn run_until_done(mut tasks: JoinSet<Result<()>>, shutdown: ShutdownToken) -> Result<()> {
+async fn run_until_done(
+    mut tasks: JoinSet<Result<()>>,
+    shutdown: ShutdownToken,
+    hard: ShutdownToken,
+    drained: ShutdownToken,
+) -> Result<()> {
     let mut result: Result<()> = Ok(());
     loop {
         tokio::select! {
             biased;
-            _ = shutdown.cancelled() => break,
+            _ = shutdown.cancelled() => {
+                let _ = tokio::time::timeout(SHUTDOWN_GRACE, drained.cancelled()).await;
+                break;
+            }
             joined = tasks.join_next() => {
                 match joined {
                     None => break, // 所有任务已结束
@@ -531,6 +579,7 @@ async fn run_until_done(mut tasks: JoinSet<Result<()>>, shutdown: ShutdownToken)
     }
     // 返回前确保一切收尾。
     shutdown.cancel();
+    hard.cancel();
     tasks.shutdown().await;
     result
 }

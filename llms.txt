@@ -102,7 +102,7 @@ async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
 
 - 能力:`#[command]`(字面命令/正则/具名槽三种匹配器;@我限定、优先级、usage、门控、冷却、开关元数据)、`#[event]`(37 种 `EventKind`:消息/25 通知/4 请求/6 生命周期/Raw)、`plugin!{}`(插件登记,同模块触发器自动归属)、`#[derive(Args/ArgEnum/Slots)]`、`matcher!{}` 内联糖。
 - 查:`crates/nagisa-macros/src/lib.rs`(7 个宏入口的属性键契约全在此文件 rustdoc)→ 实现 `attrs.rs` / `args_derive.rs` / `slots.rs` / `plugin.rs`;`EventKind` 全清单在 `crates/nagisa-core/src/event_trigger.rs`。
-- 非显然:匹配器三选一必给其一(多给/全缺编译错);`#[event]` 拒绝 `usage` / `mention_me` / `slots`;多词命令的字面空格放宽为 `\s+`;`id`/`name` 缺省取 fn 名,`can_disable`/`default_enable` 缺省 true;**无参命令默认收紧**(无 `Args<T>` 形参或规格为空 ⇒ 自动 `Matcher::no_args`:只认「命令词」与「回复/@bot/空白 + 命令词」,有任何其余内容——剩余文本或 表情/图片/@别人 等段——整体不算命中、静默放行,防「我的 xxx」日常说话误触发);`exact` 旗标显式严格(整条消息只能是命令词本身,连呼叫姿势都不算;与 `args: Args<T>` 形参同用编译错);带参命令与正则/槽位不自动收紧。
+- 非显然:匹配器三选一必给其一(多给/全缺编译错);`#[event]` 拒绝 `usage` / `mention_me` / `slots`;多词命令的字面空格放宽为 `\s+`;`id`/`name` 缺省取 fn 名,`can_disable`/`default_enable` 缺省 true;**无参命令默认收紧**(自动 `Matcher::no_args`:只认「命令词」与「**前置** 回复/@bot/空白 + 命令词」,命令词后有任何其余内容——剩余文本或 表情/图片/任何 @ 含 @bot 等段——整体不算命中、静默放行,防「我的 xxx」日常说话误触发;「有参」按形参识别,三类等同:`Args<T>` 且规格非空、原始参数 `ArgText`/`CommandArg`、内联元素 `At`/`Image` 含 `Option` 包装,带其一即不收紧);`exact` 旗标显式严格(整条消息只能是命令词本身,连呼叫姿势都不算;与 `args: Args<T>` / `ArgText` / `CommandArg` 形参同用编译错);带参命令与正则/槽位不自动收紧。
 
 ### 参数解析
 
@@ -174,7 +174,7 @@ async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
 
 - 能力:`App` 链式装配(`data` 共享态 / `superusers` / `layer` / `service` / `service_optional`(可选服务)/ `service_data`(预置 service 句柄)/ `debug` 开发模式 / `on_switch_change` + `restore_switches` 开关持久化闭环 / 七个 `*_handle()` 内省句柄 / `run_onebot` / `run_milky`);OneBot 5 种传输(正向 WS / 反向 WS / HTTP / 纯 API / LLOneBot SSE 与长轮询);Milky WS / SSE / WebHook;feature "log":`nagisa::log::init` 统一记录器 + `EventLog` 顶层可读事件日志(中文渲染/名称缓存/撤回预览)。
 - 查:`crates/nagisa/src/app.rs`、`crates/nagisa/src/lib.rs`(**prelude 全名单在此——能 `use` 到什么以它为准,import 解析失败先查它**)、`crates/nagisa-onebot/src/adapter/config.rs`、`crates/nagisa-milky/src/config.rs`、`crates/nagisa-log/src/`(`init` 的 `LogConfig` 与 `EventLog` 接线即日志样板)。
-- 非显然:启动逻辑写 `#[event(Ready)]`(每次 run 恰一次,重连不重放);`Matcher` 在 crate 根(`nagisa::Matcher`)不在 prelude;`nagisa::log::init` 返回元组 `(LogGuard, Option<LogBus>)`,guard 须持有到进程退出。
+- 非显然:启动逻辑写 `#[event(Ready)]`(每次 run 恰一次,重连不重放);`Matcher` 在 crate 根(`nagisa::Matcher`)不在 prelude;`nagisa::log::init` 返回元组 `(LogGuard, Option<LogBus>)`,guard 须持有到进程退出;`run_onebot`/`run_milky` 启动先打横幅(logo+版本+协议,直接 stdout);**关停有 3s 宽限**——shutdown 触发即停止接收新事件(堆在通道里不处理),在途 handler 至多 3s 把回复发完(适配器持独立 hard token 存活到宽限结束),排空即提前收场。
 
 ### 示例(可运行的真实用法)
 

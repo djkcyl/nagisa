@@ -119,7 +119,8 @@ enum Strictness {
     /// 缺省(带参命令):剩余内容不影响命中,交给参数解析。
     #[default]
     Any,
-    /// 无参命令的默认:除呼叫姿势(回复 / @bot / 空白)外不得有剩余内容。
+    /// 无参命令的默认:除前置呼叫姿势(回复 / @bot / 空白)外不得有剩余内容
+    /// (命令词后面挂的任何段,含 @bot,都算内容)。
     NoArgs,
     /// 显式严格(`exact`):整条消息只能是命令词本身,呼叫姿势也不算。
     Exact,
@@ -273,11 +274,10 @@ impl Matcher {
         self
     }
 
-    /// 无参命令的**默认**剩余内容要求(`#[command]` 对没有 `Args<T>` 形参或参数规格为空的
-    /// 命令自动调用,命令式注册无参命令请手动加):只认「命令词」与「回复 / @bot / 空白 +
-    /// 命令词」(呼叫姿势的任意子集组合);剩余文本非空,或剩余段里有 回复 / @bot 以外的段
-    /// (表情 / 图片 / @别人 / 语音…)都算内容,整体不算命中(静默放行,不进 parse-miss)
-    /// ——「我的」是查数据,「我的 xxx」只是日常说话,不该触发。
+    /// 无参命令的**默认**剩余内容要求(`#[command]` 对无命令体形参的命令自动调用,
+    /// 命令式注册无参命令请手动加):只认「命令词」与「**前置** 回复 / @bot / 空白 + 命令词」;
+    /// 剩余文本非空,或剩余段里有前导回复以外的段(表情 / 图片 / 任何 @ 含 @bot…)都算内容,
+    /// 整体不算命中(静默放行,不进 parse-miss)——「我的 xxx」是日常说话,不该触发「我的」。
     pub fn no_args(mut self) -> Self {
         self.strictness = Strictness::NoArgs;
         self
@@ -385,15 +385,14 @@ impl Matcher {
                 }
                 let args = splice_args(segs, first_text_idx, &remainder);
                 // 剩余内容要求:超出允许范围 ⇒ 不算命中(静默放行,不插任何 ext)。
-                // NoArgs(无参命令默认)容忍呼叫姿势:回复 / @bot / 空白;Exact(显式严格)
-                // 连呼叫姿势都不容忍——整条消息只能是命令词本身。
+                // NoArgs(无参命令默认)只容忍前置呼叫姿势:前置 @bot 已在预处理剥掉,这里
+                // 放行的只有前导回复段与空白;Exact(显式严格)连呼叫姿势都不容忍。
                 let blocked = match self.strictness {
                     Strictness::Any => false,
                     Strictness::NoArgs => {
                         !remainder.is_empty()
                             || args.iter().any(|s| match s {
                                 Segment::Reply { .. } => false,
-                                Segment::Mention { user, .. } => *user != self_id,
                                 Segment::Text(t) => !t.trim().is_empty(),
                                 _ => true,
                             })

@@ -2,9 +2,9 @@
 //!
 //! 一个 [`Service`] 有三段生命周期：
 //! 1. [`prepare`](Service::prepare)：按依赖 DAG 的**拓扑序**逐层 await（依赖先就绪）；
-//! 2. [`run`](Service::run)：全部 spawn 进一个 [`JoinSet`]，各持一个由根派生的子
-//!    [`ShutdownToken`]；任一 `run` 返回 `Err`、或 shutdown 触发即收束；
-//! 3. [`cleanup`](Service::cleanup)：触发 shutdown 后，按**逆拓扑序**清理。
+//! 2. [`run`](Service::run)：全部 spawn 进一个 [`JoinSet`]，各持 supervisor 子树派生的子
+//!    [`ShutdownToken`]；任一 `run` 返回 `Err`、或宿主 shutdown 触发即收束；
+//! 3. [`cleanup`](Service::cleanup)：取消子树后，按**逆拓扑序**清理（宿主的 token 只听不动）。
 //!
 //! `prepare` 中途失败 → 中止，并对已 `prepare` 成功者逆序 cleanup。
 //!
@@ -142,12 +142,13 @@ impl Supervisor {
         self.bus.clone()
     }
 
-    /// 编排整套生命周期。`shutdown` 是根关停信号。
+    /// 编排整套生命周期。`shutdown` 是宿主的关停信号——supervisor 只监听、从不取消它
+    /// (收束时取消的是自己派生的子树 token),服务全部自然结束不影响宿主。
     ///
     /// 1. 按依赖拓扑序逐层 `prepare`（任一失败 → 对已就绪者逆序 cleanup 后返回 Err）；
-    /// 2. 全部 `run` spawn 进 `JoinSet`，各持根 `shutdown` 的子 token；
+    /// 2. 全部 `run` spawn 进 `JoinSet`，各持子树的子 token；
     ///    await 至 shutdown 触发或某 `run` 返回 Err；
-    /// 3. 触发 shutdown，按逆拓扑序 `cleanup`。
+    /// 3. 取消子树，按逆拓扑序 `cleanup`。
     ///
     /// 返回：若某 `run` 提前以 `Err` 收束则透传该错误，否则 `Ok(())`。
     pub async fn run(self, shutdown: ShutdownToken) -> Result<()> {
@@ -175,11 +176,12 @@ impl Supervisor {
         }
 
         // —— 2. run：只 spawn 成功 prepare 的服务；任务携带其下标以便区分可选与否。——
+        let local = shutdown.child_token();
         let mut set: JoinSet<(usize, Result<()>)> = JoinSet::new();
         for &idx in &prepared {
             let svc = Arc::clone(&services[idx]);
             let bus = bus.clone();
-            let child = shutdown.child_token();
+            let child = local.child_token();
             set.spawn(async move { (idx, svc.run(bus, child).await) });
         }
 
@@ -213,8 +215,8 @@ impl Supervisor {
             }
         }
 
-        // —— 3. cleanup：触发 shutdown，等剩余 run 任务收束，再对**已就绪**服务逆拓扑序 cleanup。——
-        shutdown.cancel();
+        // —— 3. cleanup：取消子树，等剩余 run 任务收束，再对**已就绪**服务逆拓扑序 cleanup。——
+        local.cancel();
         set.shutdown().await;
         cleanup_reverse(&services, &prepared, &bus).await;
 

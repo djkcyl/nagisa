@@ -17,7 +17,7 @@
 bot 场景经 nagisa 门面(挂在 `render` feature 后面):
 
 ```toml
-nagisa = { version = "0.8.2", features = ["render"] }
+nagisa = { version = "0.9.0", features = ["render"] }
 ```
 
 ```rust,ignore

@@ -16,6 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # render 的字体栈(fontique)在 Linux 上链系统 fontconfig。
+      - name: 系统依赖
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy

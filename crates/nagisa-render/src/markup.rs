@@ -8,8 +8,8 @@
 
 use crate::error::Result;
 use crate::model::{
-    Align, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document, ImageBorder,
-    ImageSource, List, ListItem, ListKind, Panel, PanelDecor, Shadow, Table, TableStyle,
+    Align, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document, ImageBorder, ImageSource, List,
+    ListItem, ListKind, Panel, PanelDecor, Shadow, Table, TableStyle,
 };
 
 mod attrs;
@@ -74,10 +74,7 @@ fn parse_blocks_at(lines: &[String], depth: usize) -> Vec<Block> {
                 i += 1;
             }
             i += 1; // 跳过闭合（缺失也无妨）
-            blocks.push(Block::Code {
-                lang: if lang.is_empty() { None } else { Some(lang) },
-                text: text.join("\n"),
-            });
+            blocks.push(Block::Code { lang: if lang.is_empty() { None } else { Some(lang) }, text: text.join("\n") });
             continue;
         }
 
@@ -90,7 +87,6 @@ fn parse_blocks_at(lines: &[String], depth: usize) -> Vec<Block> {
                 let (cols, mut stray) = parse_columns(&inner, depth + 1);
                 blocks.push(Block::Columns(Columns { cols, gap: None }));
                 blocks.append(&mut stray); // 栏外散行不丢:排在栏块之后
-
             } else if word == "panel" {
                 blocks.push(Block::Panel(Panel {
                     blocks: parse_blocks_at(&inner, depth + 1),
@@ -299,10 +295,7 @@ fn list_marker(c: &str) -> Option<(bool, u32, usize)> {
     }
     // 有序:数字 + ('.'|')') + (空格|Tab)
     let digits = c.bytes().take_while(|x| x.is_ascii_digit()).count();
-    if digits > 0
-        && matches!(b.get(digits), Some(b'.' | b')'))
-        && matches!(b.get(digits + 1), Some(b' ' | b'\t'))
-    {
+    if digits > 0 && matches!(b.get(digits), Some(b'.' | b')')) && matches!(b.get(digits + 1), Some(b' ' | b'\t')) {
         let n = c[..digits].parse::<u32>().unwrap_or(1);
         return Some((true, n, digits + 2));
     }
@@ -454,15 +447,11 @@ fn parse_columns(inner: &[String], depth: usize) -> (Vec<Column>, Vec<Block>) {
     let mut stray_lines: Vec<String> = Vec::new();
     let mut i = 0;
     while i < inner.len() {
-        let (head, attrs) =
-            split_fence_word(inner[i].trim().strip_prefix(":::").unwrap_or("").trim());
+        let (head, attrs) = split_fence_word(inner[i].trim().strip_prefix(":::").unwrap_or("").trim());
         let mut parts = head.split_whitespace();
         if parts.next() == Some("col") {
-            let weight = parts
-                .next()
-                .and_then(|s| s.parse::<f32>().ok())
-                .filter(|w| w.is_finite() && *w > 0.0)
-                .unwrap_or(1.0);
+            let weight =
+                parts.next().and_then(|s| s.parse::<f32>().ok()).filter(|w| w.is_finite() && *w > 0.0).unwrap_or(1.0);
             let col_lines = gather_div(inner, &mut i);
             let mut blocks = parse_blocks_at(&col_lines, depth);
             // 带装饰属性的栏 = 整栏一个面板(layout 把它拉齐到本行最高栏)。
@@ -535,9 +524,7 @@ fn panel_decor(attrs: &str) -> PanelDecor {
 fn is_table_delim(t: &str) -> bool {
     let cells = split_row(t);
     !cells.is_empty()
-        && cells
-            .iter()
-            .all(|c| !c.is_empty() && c.contains('-') && c.bytes().all(|b| b == b'-' || b == b':'))
+        && cells.iter().all(|c| !c.is_empty() && c.contains('-') && c.bytes().all(|b| b == b'-' || b == b':'))
 }
 
 /// 按 `|` 切一行的单元格(去掉首尾的 `|`,各段去空白)。
@@ -592,10 +579,8 @@ fn parse_table(lines: &[String], start: usize) -> (Table, usize) {
         split_row(t).iter().map(|s| Cell { inlines: inline::parse_inlines(s), bg: None }).collect()
     };
     let header = Some(to_cells(lines[start].trim()));
-    let cols: Vec<ColSpec> = parse_align_row(lines[start + 1].trim())
-        .into_iter()
-        .map(|a| ColSpec { align: a, width: None })
-        .collect();
+    let cols: Vec<ColSpec> =
+        parse_align_row(lines[start + 1].trim()).into_iter().map(|a| ColSpec { align: a, width: None }).collect();
     let mut rows = Vec::new();
     let mut i = start + 2;
     while i < lines.len() {
@@ -670,6 +655,3 @@ fn needs_space(a: char, b: char) -> bool {
     }
     !cjk(a) && !cjk(b)
 }
-
-
-

@@ -145,10 +145,10 @@ impl Theme {
             },
             highlight: Color::rgb(0, 0, 0),
             border: Color::rgb(0, 0, 0),
-            font_sans: "Noto Sans SC".to_string(), // 内置
-            font_serif: "Noto Serif SC".to_string(), // 不内置:使用方注入思源宋体即生效,缺则回退黑体
-            font_mono: "JetBrains Mono".to_string(), // 内置(CJK 在等宽语境回退 Noto)
-            font_kai: "LXGW WenKai GB".to_string(),  // 不内置:使用方注入霞鹜文楷即生效,缺则回退黑体
+            font_sans: "Noto Sans SC".to_string(),      // 内置
+            font_serif: "Noto Serif SC".to_string(),    // 不内置:使用方注入思源宋体即生效,缺则回退黑体
+            font_mono: "JetBrains Mono".to_string(),    // 内置(CJK 在等宽语境回退 Noto)
+            font_kai: "LXGW WenKai GB".to_string(),     // 不内置:使用方注入霞鹜文楷即生效,缺则回退黑体
             font_emoji: "Noto Color Emoji".to_string(), // 不内置:系统或自备,缺则回退
             base_size: 30.0,
             line_height: 1.5,
@@ -238,15 +238,7 @@ impl PageChrome {
     }
 
     fn from_inlines(inlines: Vec<Inline>) -> Self {
-        Self {
-            inlines,
-            trailing: None,
-            align: Align::Left,
-            color: None,
-            size: 0.72,
-            rule: true,
-            band: None,
-        }
+        Self { inlines, trailing: None, align: Align::Left, color: None, size: 0.72, rule: true, band: None }
     }
 
     /// 设行尾内容(右对齐,与主内容同一行):「左 logo 右署名」分栏。

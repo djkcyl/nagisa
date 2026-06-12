@@ -24,11 +24,7 @@ nagisa::plugin! { name = "群事件", category = Fun, key = "group_events" }
 // 在任意已启用群的每条入群通知上触发。`MemberJoin` 暴露入群的群 + 用户;我们 @ 新人欢迎他。
 #[event(MemberJoin, id = "welcome")]
 async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
-    bot.send(
-        &Peer::group(j.group.0),
-        &[Segment::at(j.user), Segment::text(" 欢迎入群！")],
-    )
-    .await?;
+    bot.send(&Peer::group(j.group.0), &[Segment::at(j.user), Segment::text(" 欢迎入群！")]).await?;
     Ok(())
 }
 
@@ -44,12 +40,7 @@ async fn petpet(n: Nudge, bot: Bot) -> HandlerResult {
 #[tokio::main]
 async fn main() -> Result<()> {
     let shutdown = ctrl_c_shutdown();
-    App::new()
-        .run_onebot(
-            OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"),
-            shutdown,
-        )
-        .await
+    App::new().run_onebot(OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"), shutdown).await
 }
 
 // 没有适配器 feature 时无可运行;用一个空操作的 `main` 让示例仍能编译(上面的 handler 也仍被

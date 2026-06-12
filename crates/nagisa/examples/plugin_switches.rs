@@ -72,10 +72,7 @@ async fn main() -> Result<()> {
         .on_switch_change(|key, peer, value| {
             println!("switch {key} {peer:?} -> {value}");
         })
-        .run_onebot(
-            OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"),
-            shutdown,
-        )
+        .run_onebot(OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"), shutdown)
         .await
 }
 

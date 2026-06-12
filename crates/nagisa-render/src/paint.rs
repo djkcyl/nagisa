@@ -34,13 +34,9 @@ fn encode(pix: &Pixmap, format: OutputFormat) -> Result<Vec<u8>> {
         OutputFormat::PngFast => {
             let rgba = pixmap_to_rgba(pix);
             let mut buf = Vec::new();
-            image::codecs::png::PngEncoder::new_with_quality(
-                &mut buf,
-                CompressionType::Fast,
-                FilterType::Adaptive,
-            )
-            .write_image(&rgba, w, h, ExtendedColorType::Rgba8)
-            .map_err(enc)?;
+            image::codecs::png::PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::Adaptive)
+                .write_image(&rgba, w, h, ExtendedColorType::Rgba8)
+                .map_err(enc)?;
             Ok(buf)
         }
         // WebP:无损(image-webp 编码只支持无损)。单边上限 16383px:`Webp` 超限报明确 Err(不静默改
@@ -69,8 +65,7 @@ fn encode(pix: &Pixmap, format: OutputFormat) -> Result<Vec<u8>> {
 pub(crate) fn paint_rgba(layout: &Layout, opts: &RenderOptions) -> Result<image::RgbaImage> {
     let pix = render_pixmap(layout, opts)?;
     let (w, h) = (pix.width(), pix.height());
-    image::RgbaImage::from_raw(w, h, pixmap_to_rgba(&pix))
-        .ok_or_else(|| Error::Layout("RGBA 缓冲尺寸不符".into()))
+    image::RgbaImage::from_raw(w, h, pixmap_to_rgba(&pix)).ok_or_else(|| Error::Layout("RGBA 缓冲尺寸不符".into()))
 }
 
 /// 预乘画布 → 去预乘的 RGBA 字节(`straight = premul * 255 / a`)。
@@ -504,8 +499,7 @@ fn blend(dst: &mut PremultipliedColorU8, r: u8, g: u8, b: u8, a_color: u8, cov: 
         return;
     }
     let inv = 1.0 - sa;
-    let (dr, dg, db, da) =
-        (dst.red() as f32, dst.green() as f32, dst.blue() as f32, dst.alpha() as f32);
+    let (dr, dg, db, da) = (dst.red() as f32, dst.green() as f32, dst.blue() as f32, dst.alpha() as f32);
     let nr = (r as f32 * sa + dr * inv).round() as u8;
     let ng = (g as f32 * sa + dg * inv).round() as u8;
     let nb = (b as f32 * sa + db * inv).round() as u8;

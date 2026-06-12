@@ -67,18 +67,14 @@ impl MilkyAdapter {
     /// ws/wss 供 ws pump，sse pump 再换回 http/https）。token 仅追加到事件 URL 的 query；
     /// 动作调用与 webhook 校验各自带 `Bearer`。
     pub fn new(config: MilkyConfig) -> Result<Self> {
-        let ws_url = Url::parse(&config.ws_url)
-            .map_err(|e| Error::Transport(TransportError::WebSocket(e.to_string())))?;
+        let ws_url =
+            Url::parse(&config.ws_url).map_err(|e| Error::Transport(TransportError::WebSocket(e.to_string())))?;
 
         // 动作基址：ws→http、wss→https，path 末尾拼 `api/`。
         let http_scheme = match ws_url.scheme() {
             "ws" | "http" => "http",
             "wss" | "https" => "https",
-            other => {
-                return Err(Error::Transport(TransportError::Http(format!(
-                    "unsupported scheme: {other}"
-                ))))
-            }
+            other => return Err(Error::Transport(TransportError::Http(format!("unsupported scheme: {other}")))),
         };
         let mut api_base = ws_url.clone();
         api_base
@@ -93,9 +89,7 @@ impl MilkyAdapter {
         let event_path = join_path(ws_url.path(), "event");
         event_url.set_path(&event_path);
         if let Some(token) = &config.access_token {
-            event_url
-                .query_pairs_mut()
-                .append_pair("access_token", token);
+            event_url.query_pairs_mut().append_pair("access_token", token);
         }
 
         Ok(Self {
@@ -117,34 +111,22 @@ impl MilkyAdapter {
 
     /// 发送一个动作，返回 `data`。先按 HTTP 状态分支，再解封包。
     pub(crate) async fn call(&self, action: &str, params: Value) -> Result<Value> {
-        let url = self
-            .api_base
-            .join(action)
-            .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+        let url = self.api_base.join(action).map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
 
         // Milky 经 HTTP 调动作:无 echo、action 在 URL,故单独带 action 字段 + params 作正文。
         tracing::debug!(target: "nagisa::wire", dir = "out", action = %action, "{params}");
-        let mut req = self
-            .http
-            .post(url)
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .json(&params);
+        let mut req = self.http.post(url).header(reqwest::header::CONTENT_TYPE, "application/json").json(&params);
         if let Some(token) = &self.access_token {
             req = req.bearer_auth(token);
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+        let resp = req.send().await.map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
 
         let status = resp.status();
         // Milky 专属的非 2xx 预筛(不进 core 骨架):401/405 不是 {status,retcode,data} 封包,
         // 在读 body 之前就归为 Action 错(401→鉴权失败、405→其他)。404 与封包成功检查 / classify
         // 是两适配器共形状的部分,交 `http_action_envelope` 收尾。
-        if status == reqwest::StatusCode::METHOD_NOT_ALLOWED
-            || status == reqwest::StatusCode::UNAUTHORIZED
-        {
+        if status == reqwest::StatusCode::METHOD_NOT_ALLOWED || status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(Error::Action {
                 retcode: status.as_u16() as i64,
                 message: format!("HTTP {status}"),
@@ -156,13 +138,10 @@ impl MilkyAdapter {
             });
         }
 
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+        let body = resp.text().await.map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
         log_wire("in", &body); // HTTP 动作响应。
-        // 公共骨架:404→Unsupported + 封包成功检查 + classify。封包字段(milky 用 `message`)与
-        // retcode 语义(`classify_retcode`)是 milky 专属,经 `parse` 闭包填进统一 `Envelope`。
+                               // 公共骨架:404→Unsupported + 封包成功检查 + classify。封包字段(milky 用 `message`)与
+                               // retcode 语义(`classify_retcode`)是 milky 专属,经 `parse` 闭包填进统一 `Envelope`。
         http_action_envelope(action, status.as_u16(), &body, |body| {
             let env: ResponseEnvelope = serde_json::from_str(body)?;
             Ok(Envelope {

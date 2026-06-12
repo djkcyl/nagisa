@@ -75,9 +75,8 @@ pub(crate) fn csrf_token_from_data(data: &Value) -> String {
 /// OneBot 端缺省 → `None`(不算错误;消息照样发到了聊天)。
 pub(crate) fn forward_send_result(data: &Value, peer: Peer) -> ForwardSendResult {
     let onebot_id = data_i64(data, "message_id").map(|v| v as i32);
-    let forward_id = data_str(data, "forward_id")
-        .or_else(|| data_str(data, "res_id"))
-        .or_else(|| data_str(data, "resid"));
+    let forward_id =
+        data_str(data, "forward_id").or_else(|| data_str(data, "res_id")).or_else(|| data_str(data, "resid"));
     ForwardSendResult { message_id: MessageId { peer, seq: 0, onebot_id }, forward_id }
 }
 
@@ -87,11 +86,7 @@ pub(crate) fn forward_send_result(data: &Value, peer: Peer) -> ForwardSendResult
 ///     把 `expired_time` 作为 `ttl` 携带。完整载荷保留在各自的 `raw` 里。
 pub(crate) fn decode_rkey_list(data: &Value) -> Vec<Rkey> {
     // 首选形态:`rkeys` 数组(Lagrange/NapCat)或裸数组。
-    let arr = data
-        .get("rkeys")
-        .and_then(Value::as_array)
-        .or_else(|| data.as_array())
-        .cloned();
+    let arr = data.get("rkeys").and_then(Value::as_array).or_else(|| data.as_array()).cloned();
     if let Some(arr) = arr {
         return arr
             .into_iter()
@@ -111,13 +106,7 @@ pub(crate) fn decode_rkey_list(data: &Value) -> Vec<Rkey> {
     let mut out = Vec::new();
     for (field, kind) in [("private_key", "private"), ("group_key", "group")] {
         if let Some(rkey) = data_str(data, field) {
-            out.push(Rkey {
-                kind: kind.to_string(),
-                rkey,
-                create_time: None,
-                ttl: expired_time,
-                raw: data.clone(),
-            });
+            out.push(Rkey { kind: kind.to_string(), rkey, create_time: None, ttl: expired_time, raw: data.clone() });
         }
     }
     out
@@ -125,9 +114,7 @@ pub(crate) fn decode_rkey_list(data: &Value) -> Vec<Rkey> {
 
 /// 从统一 id 提取 OneBot wire 的 `message_id`(合成整型),错误形态与 `recall` 一致。
 pub(crate) fn onebot_id_of(id: &MessageId) -> Result<i32> {
-    id.onebot_id.ok_or_else(|| {
-        Error::action_kind(ActionErrorKind::BadParams, "message id has no onebot_id")
-    })
+    id.onebot_id.ok_or_else(|| Error::action_kind(ActionErrorKind::BadParams, "message id has no onebot_id"))
 }
 
 fn parse_sex(s: Option<&str>) -> Sex {
@@ -274,15 +261,11 @@ pub(crate) fn friend_info_from(v: &Value) -> FriendInfo {
         // NapCat/LLOneBot 扩展(Lagrange 省略 → None)。
         birthday: birthday_from(v),
         // NapCat 把手机号驼峰为 `phoneNum`;裸 `-` 表示「未设」。
-        phone: data_str(v, "phoneNum")
-            .or_else(|| data_str(v, "phone"))
-            .filter(|s| !s.is_empty() && s != "-"),
+        phone: data_str(v, "phoneNum").or_else(|| data_str(v, "phone")).filter(|s| !s.is_empty() && s != "-"),
         email: data_str(v, "email").filter(|s| !s.is_empty()),
         login_days: data_i64(v, "login_days").map(|x| x as i32),
         // NapCat 驼峰为 `longNick`;LLOneBot 用 `long_nick`。
-        long_nick: data_str(v, "longNick")
-            .or_else(|| data_str(v, "long_nick"))
-            .filter(|s| !s.is_empty()),
+        long_nick: data_str(v, "longNick").or_else(|| data_str(v, "long_nick")).filter(|s| !s.is_empty()),
         raw: v.clone(),
     }
 }
@@ -324,20 +307,13 @@ pub(crate) fn honor_member_from(v: &Value) -> HonorMember {
 /// 我们尽力把它放进 `image_url`,并兼容未来实现可能给出的真正 `url` 字段。
 pub(crate) fn announcement_from(group: Uin, v: &Value) -> Announcement {
     let msg = v.get("message");
-    let content = msg
-        .and_then(|m| m.get("text"))
-        .and_then(|t| t.as_str())
-        .map(String::from)
-        .unwrap_or_default();
+    let content = msg.and_then(|m| m.get("text")).and_then(|t| t.as_str()).map(String::from).unwrap_or_default();
     let image_url = msg
         .and_then(|m| m.get("images"))
         .and_then(|i| i.as_array())
         .and_then(|arr| arr.first())
         .and_then(|img| {
-            img.get("url")
-                .and_then(|u| u.as_str())
-                .or_else(|| img.get("id").and_then(|u| u.as_str()))
-                .map(String::from)
+            img.get("url").and_then(|u| u.as_str()).or_else(|| img.get("id").and_then(|u| u.as_str())).map(String::from)
         })
         .filter(|s| !s.is_empty());
     Announcement {
@@ -358,10 +334,8 @@ pub(crate) fn announcement_from(group: Uin, v: &Value) -> Announcement {
 pub(crate) fn essence_from(group: Uin, v: &Value) -> EssenceMessage {
     let onebot_id = data_i64(v, "message_id").map(|m| m as i32);
     // 精华消息属于群;把该 peer 串进去,让嵌套 `reply` 段恢复真实会话,而非 `friend(0)` 兜底。
-    let content = v
-        .get("content")
-        .map(|c| crate::decode::decode_message_value(c, Peer::group(group.0)))
-        .unwrap_or_default();
+    let content =
+        v.get("content").map(|c| crate::decode::decode_message_value(c, Peer::group(group.0))).unwrap_or_default();
     EssenceMessage {
         group,
         message_id: MessageId { peer: Peer::group(group.0), seq: 0, onebot_id },

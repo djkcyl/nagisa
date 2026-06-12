@@ -21,10 +21,9 @@ use nagisa_types::prelude::*;
 use serde_json::{json, Value};
 
 use crate::decode::{
-    announcement_from_value, essence_message_from_value, file_meta_from_group_file,
-    forward_node_from_value, friend_info, friend_request_to_request, group_folder_from_value,
-    group_info, member_info, message_event_from_incoming, notification_to_notice,
-    notification_to_request, sex_from_wire,
+    announcement_from_value, essence_message_from_value, file_meta_from_group_file, forward_node_from_value,
+    friend_info, friend_request_to_request, group_folder_from_value, group_info, member_info,
+    message_event_from_incoming, notification_to_notice, notification_to_request, sex_from_wire,
 };
 use crate::encode::{encode, source_to_uri};
 use crate::transport::MilkyAdapter;
@@ -111,17 +110,10 @@ impl ActionInvoker for MilkyAdapter {
     async fn send(&self, peer: &Peer, message: &[Segment]) -> Result<MessageId> {
         let segments = encode(message);
         let action = scene_action(peer, "send_private_message", "send_group_message");
-        let id_field = if peer.is_group() {
-            "group_id"
-        } else {
-            "user_id"
-        };
+        let id_field = if peer.is_group() { "group_id" } else { "user_id" };
         let params = json!({ id_field: peer.id.0, "message": segments });
         let data = self.call(action, params).await?;
-        let seq = data
-            .get("message_seq")
-            .and_then(Value::as_i64)
-            .unwrap_or_default();
+        let seq = data.get("message_seq").and_then(Value::as_i64).unwrap_or_default();
         // 响应还带 `time`,但 MessageId 没有 time 槽(需要时可经 get_message(id).time 取回),
         // 故此处刻意不透出。
         Ok(MessageId::from_seq(*peer, seq))
@@ -133,11 +125,7 @@ impl ActionInvoker for MilkyAdapter {
 
     async fn recall(&self, id: &MessageId) -> Result<()> {
         let action = scene_action(&id.peer, "recall_private_message", "recall_group_message");
-        let id_field = if id.peer.is_group() {
-            "group_id"
-        } else {
-            "user_id"
-        };
+        let id_field = if id.peer.is_group() { "group_id" } else { "user_id" };
         let params = json!({ id_field: id.peer.id.0, "message_seq": id.seq });
         self.call(action, params).await.map(drop)
     }
@@ -159,11 +147,7 @@ impl ActionInvoker for MilkyAdapter {
     async fn get_login_info(&self) -> Result<(Uin, String)> {
         let data = self.call("get_login_info", json!({})).await?;
         let uin = data.get("uin").and_then(Value::as_i64).unwrap_or_default();
-        let nickname = data
-            .get("nickname")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
+        let nickname = data.get("nickname").and_then(Value::as_str).unwrap_or_default().to_string();
         let self_uin = Uin(uin);
         // 首次成功时缓存自身 uin（OnceLock：已设置则忽略）。
         let _ = self.self_id.set(self_uin);
@@ -180,11 +164,7 @@ impl ActionInvoker for MilkyAdapter {
 
     async fn get_group_list(&self, no_cache: bool) -> Result<Vec<GroupInfo>> {
         let data = self.call("get_group_list", json!({ "no_cache": no_cache })).await?;
-        let arr = data
-            .get("groups")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("groups").and_then(Value::as_array).cloned().unwrap_or_default();
         let mut out = Vec::with_capacity(arr.len());
         for g in arr {
             let entity = serde_json::from_value(g)?;
@@ -193,14 +173,8 @@ impl ActionInvoker for MilkyAdapter {
         Ok(out)
     }
 
-    async fn get_group_member_info(
-        &self,
-        group: Uin,
-        user: Uin,
-        no_cache: bool,
-    ) -> Result<MemberInfo> {
-        let params =
-            json!({ "group_id": group.0, "user_id": user.0, "no_cache": no_cache });
+    async fn get_group_member_info(&self, group: Uin, user: Uin, no_cache: bool) -> Result<MemberInfo> {
+        let params = json!({ "group_id": group.0, "user_id": user.0, "no_cache": no_cache });
         let data = self.call("get_group_member_info", params).await?;
         let m = data.get("member").cloned().unwrap_or(data);
         let entity = serde_json::from_value(m)?;
@@ -210,11 +184,7 @@ impl ActionInvoker for MilkyAdapter {
     async fn get_group_member_list(&self, group: Uin, no_cache: bool) -> Result<Vec<MemberInfo>> {
         let params = json!({ "group_id": group.0, "no_cache": no_cache });
         let data = self.call("get_group_member_list", params).await?;
-        let arr = data
-            .get("members")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("members").and_then(Value::as_array).cloned().unwrap_or_default();
         let mut out = Vec::with_capacity(arr.len());
         for m in arr {
             let entity = serde_json::from_value(m)?;
@@ -224,14 +194,8 @@ impl ActionInvoker for MilkyAdapter {
     }
 
     async fn get_friend_list(&self, no_cache: bool) -> Result<Vec<FriendInfo>> {
-        let data = self
-            .call("get_friend_list", json!({ "no_cache": no_cache }))
-            .await?;
-        let arr = data
-            .get("friends")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let data = self.call("get_friend_list", json!({ "no_cache": no_cache })).await?;
+        let arr = data.get("friends").and_then(Value::as_array).cloned().unwrap_or_default();
         let mut out = Vec::with_capacity(arr.len());
         for f in arr {
             let entity = serde_json::from_value(f)?;
@@ -241,8 +205,7 @@ impl ActionInvoker for MilkyAdapter {
     }
 
     async fn set_group_member_mute(&self, group: Uin, user: Uin, duration: u32) -> Result<()> {
-        let params =
-            json!({ "group_id": group.0, "user_id": user.0, "duration": duration });
+        let params = json!({ "group_id": group.0, "user_id": user.0, "duration": duration });
         self.call("set_group_member_mute", params).await.map(drop)
     }
 
@@ -275,22 +238,10 @@ impl ActionInvoker for MilkyAdapter {
         self.call("kick_group_member", params).await.map(drop)
     }
 
-    async fn handle_request(
-        &self,
-        token: &RequestToken,
-        approve: bool,
-        reason: Option<&str>,
-    ) -> Result<()> {
+    async fn handle_request(&self, token: &RequestToken, approve: bool, reason: Option<&str>) -> Result<()> {
         match &token.0 {
-            RequestTokenInner::MilkyFriend {
-                initiator_uid,
-                is_filtered,
-            } => {
-                let action = if approve {
-                    "accept_friend_request"
-                } else {
-                    "reject_friend_request"
-                };
+            RequestTokenInner::MilkyFriend { initiator_uid, is_filtered } => {
+                let action = if approve { "accept_friend_request" } else { "reject_friend_request" };
                 let mut params = json!({
                     "initiator_uid": initiator_uid,
                     "is_filtered": is_filtered,
@@ -308,11 +259,7 @@ impl ActionInvoker for MilkyAdapter {
                 group_id,
                 is_filtered,
             } => {
-                let action = if approve {
-                    "accept_group_request"
-                } else {
-                    "reject_group_request"
-                };
+                let action = if approve { "accept_group_request" } else { "reject_group_request" };
                 let mut params = json!({
                     "notification_seq": notification_seq,
                     "notification_type": notification_type,
@@ -326,15 +273,8 @@ impl ActionInvoker for MilkyAdapter {
                 }
                 self.call(action, params).await.map(drop)
             }
-            RequestTokenInner::MilkyInvitation {
-                group_id,
-                invitation_seq,
-            } => {
-                let action = if approve {
-                    "accept_group_invitation"
-                } else {
-                    "reject_group_invitation"
-                };
+            RequestTokenInner::MilkyInvitation { group_id, invitation_seq } => {
+                let action = if approve { "accept_group_invitation" } else { "reject_group_invitation" };
                 let params = json!({
                     "group_id": group_id.0,
                     "invitation_seq": invitation_seq,
@@ -346,14 +286,7 @@ impl ActionInvoker for MilkyAdapter {
         }
     }
 
-    async fn send_reaction(
-        &self,
-        group: Uin,
-        seq: i64,
-        face_id: &str,
-        kind: ReactionKind,
-        is_add: bool,
-    ) -> Result<()> {
+    async fn send_reaction(&self, group: Uin, seq: i64, face_id: &str, kind: ReactionKind, is_add: bool) -> Result<()> {
         let reaction_type = match kind {
             ReactionKind::Face => "face",
             ReactionKind::Emoji => "emoji",
@@ -365,9 +298,7 @@ impl ActionInvoker for MilkyAdapter {
             "reaction_type": reaction_type,
             "is_add": is_add,
         });
-        self.call("send_group_message_reaction", params)
-            .await
-            .map(drop)
+        self.call("send_group_message_reaction", params).await.map(drop)
     }
 
     async fn send_nudge(&self, peer: &Peer, target: Uin) -> Result<()> {
@@ -379,10 +310,7 @@ impl ActionInvoker for MilkyAdapter {
             //   is_self=false → 戳好友；is_self=true → 戳机器人自己。
             // 因此：is_self = (target == bot_self_uin)。
             // 若 self_id 尚未缓存（未调用过 get_login_info），默认 false（戳好友）。
-            let is_self = self
-                .self_id
-                .get()
-                .is_some_and(|cached| *cached == target);
+            let is_self = self.self_id.get().is_some_and(|cached| *cached == target);
             let params = json!({ "user_id": peer.id.0, "is_self": is_self });
             self.call("send_friend_nudge", params).await.map(drop)
         }
@@ -402,30 +330,17 @@ impl ActionInvoker for MilkyAdapter {
             "file_name": name,
         });
         let data = self.call("upload_group_file", params).await?;
-        Ok(data
-            .get("file_id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("file_id").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
-    async fn upload_private_file(
-        &self,
-        user: Uin,
-        src: ResourceSource,
-        name: &str,
-    ) -> Result<String> {
+    async fn upload_private_file(&self, user: Uin, src: ResourceSource, name: &str) -> Result<String> {
         let params = json!({
             "user_id": user.0,
             "file_uri": source_to_uri(&src),
             "file_name": name,
         });
         let data = self.call("upload_private_file", params).await?;
-        Ok(data
-            .get("file_id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("file_id").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
     // ───────── Milky 1.2 专属 override（按 IR shape 直接 POST 对应 action）─────────
@@ -441,21 +356,12 @@ impl ActionInvoker for MilkyAdapter {
             .unwrap_or(nagisa_types::entity::Sex::Unknown);
         // 字符串字段：空串视为缺省（None）。数值字段：缺省为 None。
         let opt_str = |key: &str| -> Option<String> {
-            data.get(key)
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
+            data.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(|s| s.to_string())
         };
-        let opt_i32 = |key: &str| -> Option<i32> {
-            data.get(key).and_then(Value::as_i64).map(|n| n as i32)
-        };
+        let opt_i32 = |key: &str| -> Option<i32> { data.get(key).and_then(Value::as_i64).map(|n| n as i32) };
         Ok(UserInfo {
             user,
-            nickname: data
-                .get("nickname")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
+            nickname: data.get("nickname").and_then(Value::as_str).unwrap_or_default().to_string(),
             sex,
             age: opt_i32("age"),
             level: opt_i32("level"),
@@ -483,9 +389,7 @@ impl ActionInvoker for MilkyAdapter {
     ) -> Result<Vec<MessageEvent>> {
         // 唯一的 wire 调用点在 `get_history_messages_paged`;非分页入口只是丢掉
         // `next_message_seq` 游标。
-        self.get_history_messages_paged(peer, start.map(|m| m.seq), count)
-            .await
-            .map(|(msgs, _next)| msgs)
+        self.get_history_messages_paged(peer, start.map(|m| m.seq), count).await.map(|(msgs, _next)| msgs)
     }
 
     async fn leave_group(&self, group: Uin, _dismiss: bool) -> Result<()> {
@@ -506,9 +410,7 @@ impl ActionInvoker for MilkyAdapter {
             "user_id": user.0,
             "special_title": title,
         });
-        self.call("set_group_member_special_title", params)
-            .await
-            .map(drop)
+        self.call("set_group_member_special_title", params).await.map(drop)
     }
 
     async fn mark_message_as_read(&self, _peer: &Peer, id: &MessageId) -> Result<()> {
@@ -530,20 +432,14 @@ impl ActionInvoker for MilkyAdapter {
             "message_seq": id.seq,
             "is_set": enable,
         });
-        self.call("set_group_essence_message", params)
-            .await
-            .map(drop)
+        self.call("set_group_essence_message", params).await.map(drop)
     }
 
     async fn get_group_file_download_url(&self, group: Uin, file_id: &str) -> Result<String> {
         let params = json!({ "group_id": group.0, "file_id": file_id });
         let data = self.call("get_group_file_download_url", params).await?;
         // IR/Lagrange 响应字段为 `download_url`（非 `url`）。
-        Ok(data
-            .get("download_url")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("download_url").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
     async fn delete_group_file(&self, group: Uin, file_id: &str) -> Result<()> {
@@ -560,11 +456,7 @@ impl ActionInvoker for MilkyAdapter {
         // IR get_cookies：domain 必填。无 domain 时传空串（让服务端按需报错/兜底）。
         let params = json!({ "domain": domain.unwrap_or_default() });
         let data = self.call("get_cookies", params).await?;
-        Ok(data
-            .get("cookies")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("cookies").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
     // ───────── Milky 1.2 批次：转发 / 好友 / 公告 / 精华 / 置顶 / 文件 / 资料 / 系统 ─────────
@@ -575,11 +467,7 @@ impl ActionInvoker for MilkyAdapter {
         // OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/message.ts
         let params = json!({ "forward_id": forward_id });
         let data = self.call("get_forwarded_messages", params).await?;
-        let arr = data
-            .get("messages")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("messages").and_then(Value::as_array).cloned().unwrap_or_default();
         Ok(arr.iter().map(forward_node_from_value).collect())
     }
 
@@ -612,11 +500,7 @@ impl ActionInvoker for MilkyAdapter {
             params["image_uri"] = Value::String(source_to_uri(&src));
         }
         let data = self.call("send_group_announcement", params).await?;
-        Ok(data
-            .get("announcement_id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("announcement_id").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
     async fn get_group_announcements(&self, group: Uin) -> Result<Vec<Announcement>> {
@@ -625,11 +509,7 @@ impl ActionInvoker for MilkyAdapter {
         // OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/group.ts
         let params = json!({ "group_id": group.0 });
         let data = self.call("get_group_announcements", params).await?;
-        let arr = data
-            .get("announcements")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("announcements").and_then(Value::as_array).cloned().unwrap_or_default();
         Ok(arr.iter().map(announcement_from_value).collect())
     }
 
@@ -649,11 +529,7 @@ impl ActionInvoker for MilkyAdapter {
         loop {
             let params = json!({ "group_id": group.0, "page_index": page, "page_size": 30 });
             let data = self.call("get_group_essence_messages", params).await?;
-            let arr = data
-                .get("messages")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
+            let arr = data.get("messages").and_then(Value::as_array).cloned().unwrap_or_default();
             out.extend(arr.iter().map(essence_message_from_value));
             let is_end = data.get("is_end").and_then(Value::as_bool).unwrap_or(true);
             if is_end || arr.is_empty() {
@@ -667,11 +543,7 @@ impl ActionInvoker for MilkyAdapter {
         Ok(out)
     }
 
-    async fn get_group_files(
-        &self,
-        group: Uin,
-        folder_id: Option<&str>,
-    ) -> Result<GroupFileList> {
+    async fn get_group_files(&self, group: Uin, folder_id: Option<&str>) -> Result<GroupFileList> {
         // IR get_group_files: {group_id, parent_folder_id?='/'} → files: GroupFileEntity[],
         // folders: GroupFolderEntity[]。folder_id=None → 根目录 "/"。
         // OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/file.ts
@@ -693,12 +565,7 @@ impl ActionInvoker for MilkyAdapter {
         Ok(GroupFileList { files, folders })
     }
 
-    async fn get_private_file_download_url(
-        &self,
-        user: Uin,
-        file_id: &str,
-        hash: Option<&str>,
-    ) -> Result<String> {
+    async fn get_private_file_download_url(&self, user: Uin, file_id: &str, hash: Option<&str>) -> Result<String> {
         // IR get_private_file_download_url: {user_id, file_id, file_hash} → download_url。
         // file_hash 是 TriSHA1；IR 标必填，缺省时传空串（防御）。
         // OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/file.ts
@@ -708,11 +575,7 @@ impl ActionInvoker for MilkyAdapter {
             "file_hash": hash.unwrap_or_default(),
         });
         let data = self.call("get_private_file_download_url", params).await?;
-        Ok(data
-            .get("download_url")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("download_url").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
     async fn create_group_folder(&self, group: Uin, name: &str) -> Result<String> {
@@ -720,19 +583,10 @@ impl ActionInvoker for MilkyAdapter {
         // OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/file.ts
         let params = json!({ "group_id": group.0, "folder_name": name });
         let data = self.call("create_group_folder", params).await?;
-        Ok(data
-            .get("folder_id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("folder_id").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
-    async fn rename_group_folder(
-        &self,
-        group: Uin,
-        folder_id: &str,
-        new_name: &str,
-    ) -> Result<()> {
+    async fn rename_group_folder(&self, group: Uin, folder_id: &str, new_name: &str) -> Result<()> {
         // IR rename_group_folder: {group_id, folder_id, new_folder_name}。
         // OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/file.ts
         let params = json!({
@@ -820,11 +674,7 @@ impl ActionInvoker for MilkyAdapter {
         // IR get_csrf_token: {} → csrf_token。
         // OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/system.ts
         let data = self.call("get_csrf_token", json!({})).await?;
-        Ok(data
-            .get("csrf_token")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("csrf_token").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 }
 
@@ -859,11 +709,7 @@ impl MilkyActions for MilkyAdapter {
     async fn get_resource_url(&self, resource_id: &str) -> Result<String> {
         let params = json!({ "resource_id": resource_id });
         let data = self.call("get_resource_temp_url", params).await?;
-        Ok(data
-            .get("url")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string())
+        Ok(data.get("url").and_then(Value::as_str).unwrap_or_default().to_string())
     }
 
     async fn get_friend_requests(&self) -> Result<Vec<Request>> {
@@ -885,11 +731,7 @@ impl MilkyActions for MilkyAdapter {
         // OFFICIAL: https://milky.ntqqrev.org/api/friend (get_friend_requests) {limit, is_filtered}.
         let params = json!({ "limit": limit, "is_filtered": is_filtered });
         let data = self.call("get_friend_requests", params).await?;
-        let arr = data
-            .get("requests")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("requests").and_then(Value::as_array).cloned().unwrap_or_default();
         Ok(arr.iter().map(friend_request_to_request).collect())
     }
 
@@ -906,11 +748,7 @@ impl MilkyActions for MilkyAdapter {
             params["start_notification_seq"] = Value::from(s);
         }
         let data = self.call("get_group_notifications", params).await?;
-        let arr = data
-            .get("notifications")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("notifications").and_then(Value::as_array).cloned().unwrap_or_default();
         let mut out = Vec::with_capacity(arr.len());
         for n in &arr {
             let ntype = n.get("type").and_then(Value::as_str).unwrap_or_default();
@@ -941,11 +779,7 @@ impl MilkyActions for MilkyAdapter {
             params["start_message_seq"] = Value::from(s);
         }
         let data = self.call("get_history_messages", params).await?;
-        let arr = data
-            .get("messages")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("messages").and_then(Value::as_array).cloned().unwrap_or_default();
         let self_uin = self.self_id.get().copied().unwrap_or(Uin(0));
         let mut out = Vec::with_capacity(arr.len());
         for raw in arr {
@@ -1011,11 +845,7 @@ impl MilkyActions for MilkyAdapter {
             params["start_notification_seq"] = Value::from(s);
         }
         let data = self.call("get_group_notifications", params).await?;
-        let arr = data
-            .get("notifications")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("notifications").and_then(Value::as_array).cloned().unwrap_or_default();
         let mut out = Vec::with_capacity(arr.len());
         for n in &arr {
             let ntype = n.get("type").and_then(Value::as_str).unwrap_or_default();

@@ -19,11 +19,7 @@ use tracing_subscriber::fmt::FormatFields;
 pub(crate) struct RawMessageFields;
 
 impl<'writer> FormatFields<'writer> for RawMessageFields {
-    fn format_fields<R: RecordFields>(
-        &self,
-        mut writer: Writer<'writer>,
-        fields: R,
-    ) -> fmt::Result {
+    fn format_fields<R: RecordFields>(&self, mut writer: Writer<'writer>, fields: R) -> fmt::Result {
         let mut visitor = RawVisitor { writer: &mut writer, result: Ok(()) };
         fields.record(&mut visitor);
         visitor.result

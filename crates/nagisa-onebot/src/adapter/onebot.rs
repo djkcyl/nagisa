@@ -63,13 +63,7 @@ impl OneBotActions for OneBotAdapter {
         };
         let data = self.call("get_group_honor_info", json!({ "group_id": group.0, "type": ty })).await?;
         fn parse_list(data: &Value, key: &str) -> Vec<HonorMember> {
-            data.get(key)
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-                .iter()
-                .map(honor_member_from)
-                .collect()
+            data.get(key).and_then(Value::as_array).cloned().unwrap_or_default().iter().map(honor_member_from).collect()
         }
         let current_talkative = data.get("current_talkative").map(honor_member_from);
         let talkative_list = parse_list(&data, "talkative_list");
@@ -92,9 +86,7 @@ impl OneBotActions for OneBotAdapter {
     // OFFICIAL: https://github.com/botuniverse/onebot-11/blob/master/api/public.md
     // get_record:参数 {file, out_format}。响应 {file}(转换后路径)。
     async fn get_record(&self, file: &str, out_format: &str) -> Result<String> {
-        let data = self
-            .call("get_record", json!({ "file": file, "out_format": out_format }))
-            .await?;
+        let data = self.call("get_record", json!({ "file": file, "out_format": out_format })).await?;
         Ok(data_str(&data, "file").unwrap_or_default())
     }
 
@@ -109,11 +101,7 @@ impl OneBotActions for OneBotAdapter {
     //   (https://github.com/NapNeko/NapCatQQ);亦见 LLOneBot `set_friend_remark`。
     // 参数 {user_id, remark}。
     async fn set_friend_remark(&self, user: Uin, remark: &str) -> Result<()> {
-        self.call(
-            "set_friend_remark",
-            json!({ "user_id": user.0, "remark": remark }),
-        )
-        .await?;
+        self.call("set_friend_remark", json!({ "user_id": user.0, "remark": remark })).await?;
         Ok(())
     }
 
@@ -121,11 +109,7 @@ impl OneBotActions for OneBotAdapter {
     // 私聊里也能用(不像 ActionInvoker::send_reaction 发的 set_group_reaction 只限群)。
     async fn set_msg_reaction(&self, msg: &MessageId, emoji_id: &str, set: bool) -> Result<()> {
         let mid = onebot_id_of(msg)?;
-        self.call(
-            "set_msg_emoji_like",
-            json!({ "message_id": mid, "emoji_id": emoji_id, "set": set }),
-        )
-        .await?;
+        self.call("set_msg_emoji_like", json!({ "message_id": mid, "emoji_id": emoji_id, "set": set })).await?;
         Ok(())
     }
 
@@ -134,11 +118,7 @@ impl OneBotActions for OneBotAdapter {
     //   单独暴露为一个 wire 动作)。resp null。
     async fn unset_msg_emoji_like(&self, msg: &MessageId, emoji_id: &str) -> Result<()> {
         let mid = onebot_id_of(msg)?;
-        self.call(
-            "unset_msg_emoji_like",
-            json!({ "message_id": mid, "emoji_id": emoji_id }),
-        )
-        .await?;
+        self.call("unset_msg_emoji_like", json!({ "message_id": mid, "emoji_id": emoji_id })).await?;
         Ok(())
     }
 
@@ -192,11 +172,7 @@ impl OneBotActions for OneBotAdapter {
 
     // OFFICIAL: api/hidden.md .handle_quick_operation {context, operation}。
     async fn handle_quick_operation(&self, context: Value, operation: Value) -> Result<()> {
-        self.call(
-            ".handle_quick_operation",
-            json!({ "context": context, "operation": operation }),
-        )
-        .await?;
+        self.call(".handle_quick_operation", json!({ "context": context, "operation": operation })).await?;
         Ok(())
     }
 
@@ -204,18 +180,10 @@ impl OneBotActions for OneBotAdapter {
     //   (https://github.com/NapNeko/NapCatQQ)。参数 {image};resp texts[]。
     async fn ocr_image(&self, image: &str) -> Result<Vec<OcrText>> {
         let data = self.call("ocr_image", json!({ "image": image })).await?;
-        let arr = data
-            .get("texts")
-            .or(Some(&data))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("texts").or(Some(&data)).and_then(|v| v.as_array()).cloned().unwrap_or_default();
         Ok(arr
             .into_iter()
-            .map(|t| OcrText {
-                text: t.get("text").and_then(|x| x.as_str()).unwrap_or_default().to_string(),
-                raw: t,
-            })
+            .map(|t| OcrText { text: t.get("text").and_then(|x| x.as_str()).unwrap_or_default().to_string(), raw: t })
             .collect())
     }
 
@@ -223,8 +191,7 @@ impl OneBotActions for OneBotAdapter {
     //   (https://github.com/NapNeko/NapCatQQ)。参数 {group_id}。
     async fn send_group_sign(&self, group: Uin) -> Result<()> {
         // NapCat 同时注册 set_group_sign / send_group_sign；用别名兜底两端命名。
-        self.call_alias("set_group_sign", "send_group_sign", json!({ "group_id": group.0 }))
-            .await?;
+        self.call_alias("set_group_sign", "send_group_sign", json!({ "group_id": group.0 })).await?;
         Ok(())
     }
 
@@ -252,11 +219,7 @@ impl OneBotActions for OneBotAdapter {
                 }),
             )
             .await?;
-        let arr = data
-            .get("emojiLikesList")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("emojiLikesList").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         Ok(arr
             .into_iter()
             .map(|e| EmojiLiker {
@@ -285,9 +248,7 @@ impl OneBotActions for OneBotAdapter {
     // 返回 message_id + Lagrange forward_id(resId);见 forward_send_result()。
     async fn send_group_forward(&self, group: Uin, nodes: &[ForwardNode]) -> Result<ForwardSendResult> {
         let messages = Self::encode_forward_nodes(nodes);
-        let data = self
-            .call("send_group_forward_msg", json!({ "group_id": group.0, "messages": messages }))
-            .await?;
+        let data = self.call("send_group_forward_msg", json!({ "group_id": group.0, "messages": messages })).await?;
         Ok(forward_send_result(&data, Peer::group(group.0)))
     }
 
@@ -295,9 +256,7 @@ impl OneBotActions for OneBotAdapter {
     //   (https://github.com/NapNeko/NapCatQQ)。参数 {user_id, messages}。
     async fn send_private_forward(&self, user: Uin, nodes: &[ForwardNode]) -> Result<ForwardSendResult> {
         let messages = Self::encode_forward_nodes(nodes);
-        let data = self
-            .call("send_private_forward_msg", json!({ "user_id": user.0, "messages": messages }))
-            .await?;
+        let data = self.call("send_private_forward_msg", json!({ "user_id": user.0, "messages": messages })).await?;
         Ok(forward_send_result(&data, Peer::friend(user.0)))
     }
 
@@ -326,9 +285,7 @@ impl OneBotActions for OneBotAdapter {
     //   亦见 NapCat / LLOneBot `get_ai_characters`。
     //   参数 {group_id, chat_type};resp [{type, characters:[{character_id, character_name, preview_url}]}]。
     async fn get_ai_characters(&self, group: Uin, chat_type: &str) -> Result<Vec<AiCharacterGroup>> {
-        let data = self
-            .call("get_ai_characters", json!({ "group_id": group.0, "chat_type": chat_type }))
-            .await?;
+        let data = self.call("get_ai_characters", json!({ "group_id": group.0, "chat_type": chat_type })).await?;
         let arr = data
             .as_array()
             .cloned()
@@ -359,24 +316,14 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: LagrangeDev/Lagrange.Core Lagrange.OneBot/Core/Operation/Group/GetAiRecordOperation.cs
     //   (get_ai_record) (https://github.com/LagrangeDev/Lagrange.Core)。亦见 NapCat `get_ai_record`。
     //   参数 {group_id, character, text, chat_type};resp string(录音 url,data 即 url)。
-    async fn get_ai_record(
-        &self,
-        group: Uin,
-        character: &str,
-        text: &str,
-        chat_type: &str,
-    ) -> Result<String> {
+    async fn get_ai_record(&self, group: Uin, character: &str, text: &str, chat_type: &str) -> Result<String> {
         let data = self
             .call(
                 "get_ai_record",
                 json!({ "group_id": group.0, "character": character, "text": text, "chat_type": chat_type }),
             )
             .await?;
-        Ok(data
-            .as_str()
-            .map(String::from)
-            .or_else(|| data_str(&data, "url"))
-            .unwrap_or_default())
+        Ok(data.as_str().map(String::from).or_else(|| data_str(&data, "url")).unwrap_or_default())
     }
 
     // ENDPOINT: LagrangeDev/Lagrange.Core Lagrange.OneBot/Core/Operation/Message/SendGroupAiRecordOperation.cs
@@ -404,12 +351,7 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: NapCat packages/napcat-onebot/action/user/SetOnlineStatus.ts (set_online_status)
     //   (https://github.com/NapNeko/NapCatQQ)。亦见 LLOneBot src/onebot11/action/types.ts。
     //   参数 {status, ext_status, battery_status};resp {}。
-    async fn set_online_status(
-        &self,
-        status: i32,
-        ext_status: i32,
-        battery_status: i32,
-    ) -> Result<()> {
+    async fn set_online_status(&self, status: i32, ext_status: i32, battery_status: i32) -> Result<()> {
         self.call(
             "set_online_status",
             json!({ "status": status, "ext_status": ext_status, "battery_status": battery_status }),
@@ -422,11 +364,7 @@ impl OneBotActions for OneBotAdapter {
     //   (https://github.com/NapNeko/NapCatQQ)。亦见 LLOneBot src/onebot11/action/types.ts。
     //   参数 {user_id, event_type};resp {}。
     async fn set_input_status(&self, user: Uin, event_type: i32) -> Result<()> {
-        self.call(
-            "set_input_status",
-            json!({ "user_id": user.0, "event_type": event_type }),
-        )
-        .await?;
+        self.call("set_input_status", json!({ "user_id": user.0, "event_type": event_type })).await?;
         Ok(())
     }
 
@@ -435,19 +373,13 @@ impl OneBotActions for OneBotAdapter {
     //   参数 {};resp [{uin, nick, num}] 或 [{uid, nick, num}]。
     async fn get_profile_like(&self) -> Result<Vec<ProfileLiker>> {
         let data = self.call("get_profile_like", json!({})).await?;
-        let arr = data
-            .get("userInfos")
-            .and_then(Value::as_array)
-            .or_else(|| data.as_array())
-            .cloned()
-            .unwrap_or_default();
+        let arr =
+            data.get("userInfos").and_then(Value::as_array).or_else(|| data.as_array()).cloned().unwrap_or_default();
         Ok(arr
             .into_iter()
             .map(|v| ProfileLiker {
                 user: Uin(data_i64(&v, "uin").or_else(|| data_i64(&v, "uid")).unwrap_or(0)),
-                nickname: data_str(&v, "nick")
-                    .or_else(|| data_str(&v, "nickName"))
-                    .unwrap_or_default(),
+                nickname: data_str(&v, "nick").or_else(|| data_str(&v, "nickName")).unwrap_or_default(),
                 times: data_i64(&v, "num").unwrap_or(0) as i32,
                 raw: v,
             })
@@ -485,8 +417,7 @@ impl OneBotActions for OneBotAdapter {
     //   (set_group_remark) (https://github.com/NapNeko/NapCatQQ)。参数 {group_id, remark}。
     //   亦见 LLOneBot set_group_remark(共有)。
     async fn set_group_remark(&self, group: Uin, remark: &str) -> Result<()> {
-        self.call("set_group_remark", json!({ "group_id": group.0, "remark": remark }))
-            .await?;
+        self.call("set_group_remark", json!({ "group_id": group.0, "remark": remark })).await?;
         Ok(())
     }
 
@@ -530,9 +461,7 @@ impl OneBotActions for OneBotAdapter {
     //   参数 {user_id, message_id};resp null。合成一个 friend(user) MessageId。
     async fn forward_friend_single_msg(&self, user: Uin, msg: &MessageId) -> Result<MessageId> {
         let mid = onebot_id_of(msg)?;
-        let data = self
-            .call("forward_friend_single_msg", json!({ "user_id": user.0, "message_id": mid }))
-            .await?;
+        let data = self.call("forward_friend_single_msg", json!({ "user_id": user.0, "message_id": mid })).await?;
         let onebot_id = data_i64(&data, "message_id").map(|v| v as i32);
         Ok(MessageId { peer: Peer::friend(user.0), seq: 0, onebot_id })
     }
@@ -541,9 +470,7 @@ impl OneBotActions for OneBotAdapter {
     //   参数 {group_id, message_id};resp null。合成一个 group(group) MessageId。
     async fn forward_group_single_msg(&self, group: Uin, msg: &MessageId) -> Result<MessageId> {
         let mid = onebot_id_of(msg)?;
-        let data = self
-            .call("forward_group_single_msg", json!({ "group_id": group.0, "message_id": mid }))
-            .await?;
+        let data = self.call("forward_group_single_msg", json!({ "group_id": group.0, "message_id": mid })).await?;
         let onebot_id = data_i64(&data, "message_id").map(|v| v as i32);
         Ok(MessageId { peer: Peer::group(group.0), seq: 0, onebot_id })
     }
@@ -564,12 +491,7 @@ impl OneBotActions for OneBotAdapter {
     //   LLOneBot action/llbot/group/GroupAlbum/GetGroupAlbumMediaList.ts (get_group_album_media_list);
     //   两厂商共用此 wire 名。参数 {group_id, album_id, attach_info?};resp 媒体列表。
     //   group_id 序列化为字符串(NapCat Type.String / LLOneBot handler .toString())。
-    async fn get_group_album_media_list(
-        &self,
-        group: Uin,
-        album_id: &str,
-        attach_info: Option<&str>,
-    ) -> Result<Value> {
+    async fn get_group_album_media_list(&self, group: Uin, album_id: &str, attach_info: Option<&str>) -> Result<Value> {
         let mut params = Map::new();
         params.insert("group_id".into(), json!(group.0.to_string()));
         params.insert("album_id".into(), json!(album_id));
@@ -604,11 +526,7 @@ impl OneBotActions for OneBotAdapter {
     //   NapCat(参数 {flag, approve});共有。我们无条件同发 {flag, approve}——LLOneBot 会忽略多出
     //   的 `approve` 键(它总是同意),故这种同发是安全的。
     async fn set_doubt_friends_add_request(&self, flag: &str, approve: bool) -> Result<()> {
-        self.call(
-            "set_doubt_friends_add_request",
-            json!({ "flag": flag, "approve": approve }),
-        )
-        .await?;
+        self.call("set_doubt_friends_add_request", json!({ "flag": flag, "approve": approve })).await?;
         Ok(())
     }
 
@@ -617,17 +535,9 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: NapCat packages/napcat-onebot/action/user/SetDiyOnlineStatus.ts
     //   (set_diy_online_status) (https://github.com/NapNeko/NapCatQQ)。
     //   参数 {face_id, face_type, wording};resp {}。
-    async fn set_diy_online_status(
-        &self,
-        face_id: i32,
-        face_type: i32,
-        wording: &str,
-    ) -> Result<()> {
-        self.call(
-            "set_diy_online_status",
-            json!({ "face_id": face_id, "face_type": face_type, "wording": wording }),
-        )
-        .await?;
+    async fn set_diy_online_status(&self, face_id: i32, face_type: i32, wording: &str) -> Result<()> {
+        self.call("set_diy_online_status", json!({ "face_id": face_id, "face_type": face_type, "wording": wording }))
+            .await?;
         Ok(())
     }
 
@@ -665,12 +575,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/extends/SetGroupKickMembers.ts (set_group_kick_members)。
     //   参数 {group_id, user_id:[Uin], reject_add_request};user_id 是整数 JSON 数组。
-    async fn set_group_kick_members(
-        &self,
-        group: Uin,
-        users: &[Uin],
-        reject_add: bool,
-    ) -> Result<()> {
+    async fn set_group_kick_members(&self, group: Uin, users: &[Uin], reject_add: bool) -> Result<()> {
         let ids: Vec<i64> = users.iter().map(|u| u.0).collect();
         self.call(
             "set_group_kick_members",
@@ -811,12 +716,7 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: NapCat action/extends/ShareContact.ts。
     //   wire 名是 `send_ark_share`(当前),带已弃用的别名 `ArkSharePeer`。
     //   参数 {user_id?, group_id?, phone_number?};resp ark JSON Value。
-    async fn share_contact(
-        &self,
-        user: Option<Uin>,
-        group: Option<Uin>,
-        phone_number: Option<&str>,
-    ) -> Result<Value> {
+    async fn share_contact(&self, user: Option<Uin>, group: Option<Uin>, phone_number: Option<&str>) -> Result<Value> {
         let mut params = Map::new();
         if let Some(u) = user {
             params.insert("user_id".into(), json!(u.0.to_string()));
@@ -834,13 +734,7 @@ impl OneBotActions for OneBotAdapter {
     //   (LLOneBot 只有 fetch_emoji_like)。参数 {message_id, emoji_id, emoji_type, count};
     //   resp {emoji_like_list:[{user_id, nick_name}]}。emoji_type 序列化为字符串
     //   (与 fetch_emoji_like 的 emojiType 约定一致)。
-    async fn get_emoji_likes(
-        &self,
-        msg: &MessageId,
-        emoji_id: &str,
-        emoji_type: i32,
-        count: u32,
-    ) -> Result<Value> {
+    async fn get_emoji_likes(&self, msg: &MessageId, emoji_id: &str, emoji_type: i32, count: u32) -> Result<Value> {
         let mid = onebot_id_of(msg)?;
         self.call(
             "get_emoji_likes",
@@ -890,12 +784,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/extends/DelGroupAlbumMedia.ts (del_group_album_media)。
     //   参数 {group_id, album_id, lloc}。
-    async fn del_group_album_media(
-        &self,
-        group: Uin,
-        album_id: &str,
-        lloc: &str,
-    ) -> Result<()> {
+    async fn del_group_album_media(&self, group: Uin, album_id: &str, lloc: &str) -> Result<()> {
         self.call(
             "del_group_album_media",
             json!({ "group_id": group.0.to_string(), "album_id": album_id, "lloc": lloc }),
@@ -926,13 +815,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/extends/DoGroupAlbumComment.ts (do_group_album_comment)。
     //   参数 {group_id, album_id, lloc, content}。
-    async fn do_group_album_comment(
-        &self,
-        group: Uin,
-        album_id: &str,
-        lloc: &str,
-        content: &str,
-    ) -> Result<Value> {
+    async fn do_group_album_comment(&self, group: Uin, album_id: &str, lloc: &str, content: &str) -> Result<Value> {
         self.call(
             "do_group_album_comment",
             json!({
@@ -949,12 +832,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/file/flash/CreateFlashTask.ts (create_flash_task)。
     //   参数 {files:[String], name?, thumb_path?}。
-    async fn create_flash_task(
-        &self,
-        files: &[String],
-        name: Option<&str>,
-        thumb_path: Option<&str>,
-    ) -> Result<Value> {
+    async fn create_flash_task(&self, files: &[String], name: Option<&str>, thumb_path: Option<&str>) -> Result<Value> {
         let mut params = Map::new();
         params.insert("files".into(), json!(files));
         if let Some(n) = name {
@@ -968,12 +846,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/file/flash/SendFlashMsg.ts (send_flash_msg)。
     //   参数 {fileset_id, user_id?, group_id?};各 id 序列化为字符串。
-    async fn send_flash_msg(
-        &self,
-        fileset_id: &str,
-        user: Option<Uin>,
-        group: Option<Uin>,
-    ) -> Result<Value> {
+    async fn send_flash_msg(&self, fileset_id: &str, user: Option<Uin>, group: Option<Uin>) -> Result<Value> {
         let mut params = Map::new();
         params.insert("fileset_id".into(), json!(fileset_id));
         if let Some(u) = user {
@@ -1038,12 +911,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/file/online/SendOnlineFile.ts (send_online_file)。
     //   参数 {user_id, file_path, file_name?};user_id 序列化为字符串。
-    async fn send_online_file(
-        &self,
-        user: Uin,
-        file_path: &str,
-        file_name: Option<&str>,
-    ) -> Result<Value> {
+    async fn send_online_file(&self, user: Uin, file_path: &str, file_name: Option<&str>) -> Result<Value> {
         let mut params = Map::new();
         params.insert("user_id".into(), json!(user.0.to_string()));
         params.insert("file_path".into(), json!(file_path));
@@ -1055,12 +923,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/file/online/SendOnlineFolder.ts (send_online_folder)。
     //   参数 {user_id, folder_path, folder_name?}。
-    async fn send_online_folder(
-        &self,
-        user: Uin,
-        folder_path: &str,
-        folder_name: Option<&str>,
-    ) -> Result<Value> {
+    async fn send_online_folder(&self, user: Uin, folder_path: &str, folder_name: Option<&str>) -> Result<Value> {
         let mut params = Map::new();
         params.insert("user_id".into(), json!(user.0.to_string()));
         params.insert("folder_path".into(), json!(folder_path));
@@ -1078,12 +941,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/file/online/ReceiveOnlineFile.ts (receive_online_file)。
     //   参数 {user_id, msg_id, element_id}。
-    async fn receive_online_file(
-        &self,
-        user: Uin,
-        msg_id: &str,
-        element_id: &str,
-    ) -> Result<Value> {
+    async fn receive_online_file(&self, user: Uin, msg_id: &str, element_id: &str) -> Result<Value> {
         self.call(
             "receive_online_file",
             json!({ "user_id": user.0.to_string(), "msg_id": msg_id, "element_id": element_id }),
@@ -1093,12 +951,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/file/online/RefuseOnlineFile.ts (refuse_online_file)。
     //   参数 {user_id, msg_id, element_id}。
-    async fn refuse_online_file(
-        &self,
-        user: Uin,
-        msg_id: &str,
-        element_id: &str,
-    ) -> Result<()> {
+    async fn refuse_online_file(&self, user: Uin, msg_id: &str, element_id: &str) -> Result<()> {
         self.call(
             "refuse_online_file",
             json!({ "user_id": user.0.to_string(), "msg_id": msg_id, "element_id": element_id }),
@@ -1110,11 +963,7 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: NapCat action/file/online/CancelOnlineFile.ts (cancel_online_file)。
     //   参数 {user_id, msg_id}。
     async fn cancel_online_file(&self, user: Uin, msg_id: &str) -> Result<()> {
-        self.call(
-            "cancel_online_file",
-            json!({ "user_id": user.0.to_string(), "msg_id": msg_id }),
-        )
-        .await?;
+        self.call("cancel_online_file", json!({ "user_id": user.0.to_string(), "msg_id": msg_id })).await?;
         Ok(())
     }
 
@@ -1130,16 +979,14 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: NapCat action/packet/CompleteGroupTodo.ts (complete_group_todo)。
     async fn complete_group_todo(&self, group: Uin, msg: &MessageId) -> Result<()> {
         let mid = onebot_id_of(msg)?;
-        self.call("complete_group_todo", json!({ "group_id": group.0, "message_id": mid }))
-            .await?;
+        self.call("complete_group_todo", json!({ "group_id": group.0, "message_id": mid })).await?;
         Ok(())
     }
 
     // ENDPOINT: NapCat action/packet/CancelGroupTodo.ts (cancel_group_todo)。
     async fn cancel_group_todo(&self, group: Uin, msg: &MessageId) -> Result<()> {
         let mid = onebot_id_of(msg)?;
-        self.call("cancel_group_todo", json!({ "group_id": group.0, "message_id": mid }))
-            .await?;
+        self.call("cancel_group_todo", json!({ "group_id": group.0, "message_id": mid })).await?;
         Ok(())
     }
 
@@ -1154,11 +1001,7 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: NapCat action/extends/GetCollectionList.ts (get_collection_list)。
     //   参数 {category, count}(服务端两者皆字符串)。
     async fn get_collection_list(&self, category: &str, count: u32) -> Result<Value> {
-        self.call(
-            "get_collection_list",
-            json!({ "category": category, "count": count.to_string() }),
-        )
-        .await
+        self.call("get_collection_list", json!({ "category": category, "count": count.to_string() })).await
     }
 
     // ENDPOINT: NapCat action/go-cqhttp/GoCQHTTPCheckUrlSafely.ts (check_url_safely)。
@@ -1231,18 +1074,9 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: NapCat action/extends/CustomFace.ts (set_custom_face_desc)。
     //   参数 {emoji_id, res_id, md5, desc}。
-    async fn set_custom_face_desc(
-        &self,
-        emoji_id: &str,
-        res_id: &str,
-        md5: &str,
-        desc: &str,
-    ) -> Result<()> {
-        self.call(
-            "set_custom_face_desc",
-            json!({ "emoji_id": emoji_id, "res_id": res_id, "md5": md5, "desc": desc }),
-        )
-        .await?;
+    async fn set_custom_face_desc(&self, emoji_id: &str, res_id: &str, md5: &str, desc: &str) -> Result<()> {
+        self.call("set_custom_face_desc", json!({ "emoji_id": emoji_id, "res_id": res_id, "md5": md5, "desc": desc }))
+            .await?;
         Ok(())
     }
 
@@ -1294,12 +1128,7 @@ impl OneBotActions for OneBotAdapter {
     //   (SendGroupArkShare -> send_group_ark_share;已弃用别名 ShareGroupEx -> ArkShareGroup)。
     //   参数 {group_id:String};resp Ark JSON 字符串,原样作 Value 透传。
     async fn send_group_ark_share(&self, group: Uin) -> Result<Value> {
-        self.call_alias(
-            "send_group_ark_share",
-            "ArkShareGroup",
-            json!({ "group_id": group.0.to_string() }),
-        )
-        .await
+        self.call_alias("send_group_ark_share", "ArkShareGroup", json!({ "group_id": group.0.to_string() })).await
     }
 
     // ENDPOINT: NapCat action/packet/GetRkeyEx.ts (GetRkey class -> nc_get_rkey);参数 {}。
@@ -1324,8 +1153,7 @@ impl OneBotActions for OneBotAdapter {
     //   NapCat 不注册独立的 `get_group_add_request` wire 名(go-cqhttp 已弃用,重定向到
     //   get_group_system_msg)。先试旧名,再回退到当前的私有 wire 名,使新旧端都能解析。
     async fn get_group_add_request(&self) -> Result<Value> {
-        self.call_alias("get_group_add_request", "get_group_ignore_add_request", json!({}))
-            .await
+        self.call_alias("get_group_add_request", "get_group_ignore_add_request", json!({})).await
     }
 
     // ENDPOINT: NapCat action/extends/SetGroupAlbumMediaLike.ts
@@ -1491,11 +1319,7 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: LLOneBot action/llbot/user/SetFriendCategory.ts (set_friend_category)。
     //   参数 {user_id, category_id}。
     async fn set_friend_category(&self, user: Uin, category_id: i64) -> Result<()> {
-        self.call(
-            "set_friend_category",
-            json!({ "user_id": user.0, "category_id": category_id }),
-        )
-        .await?;
+        self.call("set_friend_category", json!({ "user_id": user.0, "category_id": category_id })).await?;
         Ok(())
     }
 
@@ -1523,11 +1347,7 @@ impl OneBotActions for OneBotAdapter {
             params.insert("group_id".into(), json!(g.0));
         }
         let data = self.call("get_qq_avatar", Value::Object(params)).await?;
-        Ok(data
-            .as_str()
-            .map(String::from)
-            .or_else(|| data_str(&data, "url"))
-            .unwrap_or_default())
+        Ok(data.as_str().map(String::from).or_else(|| data_str(&data, "url")).unwrap_or_default())
     }
 
     // ENDPOINT: LLOneBot action/llbot/msg/GetRecommendFace.ts (get_recommend_face)。
@@ -1557,13 +1377,7 @@ impl OneBotActions for OneBotAdapter {
     //   参数 {file};resp [{text}]。
     async fn scan_qrcode(&self, file: &str) -> Result<Vec<String>> {
         let data = self.call("scan_qrcode", json!({ "file": file })).await?;
-        Ok(data
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|v| data_str(&v, "text"))
-            .collect())
+        Ok(data.as_array().cloned().unwrap_or_default().into_iter().filter_map(|v| data_str(&v, "text")).collect())
     }
 
     // ENDPOINT: LLOneBot action/llbot/group/BatchDeleteGroupMember.ts
@@ -1572,11 +1386,7 @@ impl OneBotActions for OneBotAdapter {
     //   set_group_kick_members 用 user_id + reject_add_request 不同)。
     async fn batch_delete_group_member(&self, group: Uin, users: &[Uin]) -> Result<()> {
         let ids: Vec<i64> = users.iter().map(|u| u.0).collect();
-        self.call(
-            "batch_delete_group_member",
-            json!({ "group_id": group.0, "user_ids": ids }),
-        )
-        .await?;
+        self.call("batch_delete_group_member", json!({ "group_id": group.0, "user_ids": ids })).await?;
         Ok(())
     }
 
@@ -1584,12 +1394,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: LLOneBot action/llbot/group/GroupAlbum/CreateGroupAlbum.ts (create_group_album)。
     //   参数 {group_id, name, desc?}。
-    async fn create_group_album(
-        &self,
-        group: Uin,
-        name: &str,
-        desc: Option<&str>,
-    ) -> Result<Value> {
+    async fn create_group_album(&self, group: Uin, name: &str, desc: Option<&str>) -> Result<Value> {
         let mut params = Map::new();
         params.insert("group_id".into(), json!(group.0.to_string()));
         params.insert("name".into(), json!(name));
@@ -1602,11 +1407,7 @@ impl OneBotActions for OneBotAdapter {
     // ENDPOINT: LLOneBot action/llbot/group/GroupAlbum/DeleteGroupAlbum.ts (delete_group_album)。
     //   参数 {group_id, album_id}。
     async fn delete_group_album(&self, group: Uin, album_id: &str) -> Result<()> {
-        self.call(
-            "delete_group_album",
-            json!({ "group_id": group.0.to_string(), "album_id": album_id }),
-        )
-        .await?;
+        self.call("delete_group_album", json!({ "group_id": group.0.to_string(), "album_id": album_id })).await?;
         Ok(())
     }
 
@@ -1618,12 +1419,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: LLOneBot action/llbot/group/GroupAlbum/UploadGroupAlbum.ts (upload_group_album)。
     //   参数 {group_id, album_id, files:[String]}。
-    async fn upload_group_album(
-        &self,
-        group: Uin,
-        album_id: &str,
-        files: &[String],
-    ) -> Result<Value> {
+    async fn upload_group_album(&self, group: Uin, album_id: &str, files: &[String]) -> Result<Value> {
         self.call(
             "upload_group_album",
             json!({ "group_id": group.0.to_string(), "album_id": album_id, "files": files }),
@@ -1646,11 +1442,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: LLOneBot action/llbot/file/DownloadFlashFile.ts (download_flash_file)。
     //   参数 {file_set_id?, share_link?}(至少一个)。
-    async fn download_flash_file(
-        &self,
-        file_set_id: Option<&str>,
-        share_link: Option<&str>,
-    ) -> Result<Value> {
+    async fn download_flash_file(&self, file_set_id: Option<&str>, share_link: Option<&str>) -> Result<Value> {
         let mut params = Map::new();
         if let Some(id) = file_set_id {
             params.insert("file_set_id".into(), json!(id));
@@ -1669,11 +1461,7 @@ impl OneBotActions for OneBotAdapter {
 
     // ENDPOINT: LLOneBot action/llbot/file/GetFlashFileInfo.ts (get_flash_file_info)。
     //   参数 {file_set_id?, share_link?}(至少一个)。
-    async fn get_flash_file_info(
-        &self,
-        file_set_id: Option<&str>,
-        share_link: Option<&str>,
-    ) -> Result<Value> {
+    async fn get_flash_file_info(&self, file_set_id: Option<&str>, share_link: Option<&str>) -> Result<Value> {
         let mut params = Map::new();
         if let Some(id) = file_set_id {
             params.insert("file_set_id".into(), json!(id));
@@ -1727,20 +1515,14 @@ impl OneBotActions for OneBotAdapter {
     //   参数 {file}(path/url/base64);resp string(url,data 即 url 字符串)。
     async fn upload_image(&self, file: &str) -> Result<String> {
         let data = self.call("upload_image", json!({ "file": file })).await?;
-        Ok(data
-            .as_str()
-            .map(String::from)
-            .or_else(|| data_str(&data, "url"))
-            .unwrap_or_default())
+        Ok(data.as_str().map(String::from).or_else(|| data_str(&data, "url")).unwrap_or_default())
     }
 
     // ENDPOINT: LagrangeDev/Lagrange.Core Lagrange.OneBot/Core/Operation/Generic/FetchMFaceKeyOperation.cs
     //   (fetch_mface_key) (https://github.com/LagrangeDev/Lagrange.Core)。
     //   参数 {emoji_ids:[String]};resp [String](key 数组,data 即该数组)。
     async fn fetch_mface_key(&self, emoji_ids: &[String]) -> Result<Vec<String>> {
-        let data = self
-            .call("fetch_mface_key", json!({ "emoji_ids": emoji_ids }))
-            .await?;
+        let data = self.call("fetch_mface_key", json!({ "emoji_ids": emoji_ids })).await?;
         Ok(data
             .as_array()
             .cloned()
@@ -1778,13 +1560,7 @@ impl OneBotActions for OneBotAdapter {
     //   wire action_name `send_group_bot_callback`;参数
     //   {group_id, bot_id, data_1, data_2}(OneBotSetGroupBothd: GroupId/BotId/Data_1/Data_2)——
     //   按钮回调载荷是两个字符串,不是单个 `bot_appid`/`data` 对。
-    async fn send_group_bot_callback(
-        &self,
-        group: Uin,
-        bot_id: Uin,
-        data_1: &str,
-        data_2: &str,
-    ) -> Result<()> {
+    async fn send_group_bot_callback(&self, group: Uin, bot_id: Uin, data_1: &str, data_2: &str) -> Result<()> {
         self.call(
             "send_group_bot_callback",
             json!({ "group_id": group.0, "bot_id": bot_id.0, "data_1": data_1, "data_2": data_2 }),
@@ -1799,11 +1575,8 @@ impl OneBotActions for OneBotAdapter {
     //   参数 {message_id, user_id, emoji_id}(OneBotPrivateJoinEmojiChain)。
     async fn join_friend_emoji_chain(&self, user: Uin, emoji_id: i64, msg: &MessageId) -> Result<()> {
         let mid = onebot_id_of(msg)?;
-        self.call(
-            ".join_friend_emoji_chain",
-            json!({ "message_id": mid, "user_id": user.0, "emoji_id": emoji_id }),
-        )
-        .await?;
+        self.call(".join_friend_emoji_chain", json!({ "message_id": mid, "user_id": user.0, "emoji_id": emoji_id }))
+            .await?;
         Ok(())
     }
 
@@ -1813,11 +1586,8 @@ impl OneBotActions for OneBotAdapter {
     //   参数 {message_id, group_id, emoji_id}(OneBotGroupJoinEmojiChain)。
     async fn join_group_emoji_chain(&self, group: Uin, emoji_id: i64, msg: &MessageId) -> Result<()> {
         let mid = onebot_id_of(msg)?;
-        self.call(
-            ".join_group_emoji_chain",
-            json!({ "message_id": mid, "group_id": group.0, "emoji_id": emoji_id }),
-        )
-        .await?;
+        self.call(".join_group_emoji_chain", json!({ "message_id": mid, "group_id": group.0, "emoji_id": emoji_id }))
+            .await?;
         Ok(())
     }
 

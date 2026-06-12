@@ -7,7 +7,14 @@ use std::sync::{Mutex, OnceLock};
 
 /// 插件分类。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Category { Core, User, Tool, Fun, Push, Admin }
+pub enum Category {
+    Core,
+    User,
+    Tool,
+    Fun,
+    Push,
+    Admin,
+}
 
 /// 插件级元数据 + 总开关策略。全 `&'static`，运行期零开销。
 #[derive(Clone, Debug, PartialEq)]
@@ -50,7 +57,10 @@ impl PluginMeta {
 
 /// 触发器是靠命令匹配触发还是靠事件触发。
 #[derive(Clone, Copy, Debug)]
-pub enum TriggerKind { Command, Event(crate::event_trigger::EventKind) }
+pub enum TriggerKind {
+    Command,
+    Event(crate::event_trigger::EventKind),
+}
 
 /// 触发器级元数据（命令或事件）。`key == "<plugin_key>.<id>"`。
 #[derive(Clone, Debug)]
@@ -77,22 +87,20 @@ pub struct TriggerMeta {
 }
 
 /// 一条 inventory 收集到的插件声明（由 `plugin!{}` 产出）。
-pub struct PluginSpec { pub meta: PluginMeta }
+pub struct PluginSpec {
+    pub meta: PluginMeta,
+}
 inventory::collect!(PluginSpec);
 
 /// 取 `module_path` 是 `trigger_path` 之最长前缀的那个插件。
 pub fn link_trigger<'a>(trigger_path: &str, plugins: &'a [PluginMeta]) -> Option<&'a PluginMeta> {
-    plugins
-        .iter()
-        .filter(|p| is_module_prefix(p.module_path, trigger_path))
-        .max_by_key(|p| p.module_path.len())
+    plugins.iter().filter(|p| is_module_prefix(p.module_path, trigger_path)).max_by_key(|p| p.module_path.len())
 }
 
 /// `prefix` 等于 `path`、或是它的祖先模块时为真
 /// （以 `::` 为边界，故 `a::horse` 不是 `a::horseshoe` 的前缀）。
 fn is_module_prefix(prefix: &str, path: &str) -> bool {
-    path == prefix
-        || (path.starts_with(prefix) && path[prefix.len()..].starts_with("::"))
+    path == prefix || (path.starts_with(prefix) && path[prefix.len()..].starts_with("::"))
 }
 
 /// 全部已声明的插件（inventory 的克隆）。顺序不稳定。

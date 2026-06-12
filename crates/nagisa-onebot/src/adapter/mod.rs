@@ -43,9 +43,9 @@ mod api;
 mod config;
 mod inbound;
 
-pub use config::{LLOneBotEventMode, OneBotConfig, OneBotTransport, QuickOpFn};
 pub(crate) use api::*;
 pub(crate) use config::encode_query;
+pub use config::{LLOneBotEventMode, OneBotConfig, OneBotTransport, QuickOpFn};
 pub(crate) use inbound::{dispatch_event, log_wire, prepare_inbound};
 
 const ACTION_TIMEOUT: Duration = Duration::from_secs(10);
@@ -113,7 +113,10 @@ impl OneBotAdapter {
     /// 处理器回默认的 `204 NO_CONTENT`。
     ///
     /// 规范:[OneBot v11 §6.1 quick-op](https://github.com/botuniverse/onebot-11/blob/master/communication/http.md)。
-    pub fn with_quick_op(self: Arc<Self>, f: impl Fn(&nagisa_types::event::Event) -> Option<Value> + Send + Sync + 'static) -> Arc<Self> {
+    pub fn with_quick_op(
+        self: Arc<Self>,
+        f: impl Fn(&nagisa_types::event::Event) -> Option<Value> + Send + Sync + 'static,
+    ) -> Arc<Self> {
         *self.quick_op.lock().unwrap() = Some(Arc::new(f));
         self
     }
@@ -133,9 +136,7 @@ impl OneBotAdapter {
         // `HttpApi`(仅 API)、`LLOneBotHttp`(API + SSE/长轮询事件)的动作都路由到这里。
         if matches!(
             self.config.mode,
-            OneBotTransport::Http { .. }
-                | OneBotTransport::HttpApi { .. }
-                | OneBotTransport::LLOneBotHttp { .. }
+            OneBotTransport::Http { .. } | OneBotTransport::HttpApi { .. } | OneBotTransport::LLOneBotHttp { .. }
         ) {
             return self.call_http(action, params).await;
         }
@@ -206,10 +207,7 @@ impl OneBotAdapter {
         if let Some(token) = &self.config.access_token {
             req = req.bearer_auth(token);
         }
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+        let resp = req.send().await.map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
         let status = resp.status();
         // OneBot 专属的非 2xx 预筛(不进 core 骨架):除 404 外的非 2xx 都不是
         // `{status,retcode,data}` 封包(HTML 错误页 / 空 body / 鉴权挑战),在解封包之前就归为
@@ -221,30 +219,25 @@ impl OneBotAdapter {
                 retcode: status.as_u16() as i64,
                 message: format!("HTTP {status}"),
                 kind: match status {
-                    reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
-                        ActionErrorKind::AuthFailed
-                    }
+                    reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => ActionErrorKind::AuthFailed,
                     reqwest::StatusCode::TOO_MANY_REQUESTS => ActionErrorKind::RateLimited,
                     _ => ActionErrorKind::Other,
                 },
             });
         }
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+        let body = resp.text().await.map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
         log_wire("in", &body); // HTTP 入站:动作响应 + 长轮询 get_event 事件批(镜像 ws 的入站响应帧)。
-        // 公共骨架:404→Unsupported + 封包成功检查 + classify(与 Milky 适配器共形状)。OneBot
-        // 封包字段(`msg`/`wording` alias)、retcode 表(`classify_retcode`)与 ok 判定(status
-        // `ok`/`async` 或 retcode==0 均算成功,与 ws 路径的 `map_response` 同口径)是 OneBot 专属,
-        // 经 `parse` 闭包填进统一 `Envelope`。
-        //
-        // 解析失败原样透传为 `Error::Decode`(同 Milky 的 `?`):HTTP 路径无 echo 关联保证封包合法,
-        // 故畸形/空的 2xx body 绝不能被静默吞成 `Ok(Null)`。
-        //
-        // 与 `map_response` 的细微差异:retcode==404 的**失败**封包,ws 路径(`map_response`)报
-        // `Error::Unsupported(action)`,此处经骨架报 `Error::Action { kind: Unsupported }`——两者
-        // `is_unsupported()` 同真,`call_alias` 的别名回退行为一致(能力不丢)。
+                               // 公共骨架:404→Unsupported + 封包成功检查 + classify(与 Milky 适配器共形状)。OneBot
+                               // 封包字段(`msg`/`wording` alias)、retcode 表(`classify_retcode`)与 ok 判定(status
+                               // `ok`/`async` 或 retcode==0 均算成功,与 ws 路径的 `map_response` 同口径)是 OneBot 专属,
+                               // 经 `parse` 闭包填进统一 `Envelope`。
+                               //
+                               // 解析失败原样透传为 `Error::Decode`(同 Milky 的 `?`):HTTP 路径无 echo 关联保证封包合法,
+                               // 故畸形/空的 2xx body 绝不能被静默吞成 `Ok(Null)`。
+                               //
+                               // 与 `map_response` 的细微差异:retcode==404 的**失败**封包,ws 路径(`map_response`)报
+                               // `Error::Unsupported(action)`,此处经骨架报 `Error::Action { kind: Unsupported }`——两者
+                               // `is_unsupported()` 同真,`call_alias` 的别名回退行为一致(能力不丢)。
         nagisa_core::wire::http_action_envelope(action, status.as_u16(), &body, |body| {
             let resp: RespJson = serde_json::from_str(body)?;
             // OneBot ok 判定:`status == "ok"/"async"` 或 `retcode == 0` 均算成功(`async` =
@@ -260,9 +253,7 @@ impl OneBotAdapter {
                     classify: ActionErrorKind::Other,
                 }
             } else {
-                let message = resp
-                    .message
-                    .unwrap_or_else(|| format!("retcode {}", resp.retcode));
+                let message = resp.message.unwrap_or_else(|| format!("retcode {}", resp.retcode));
                 Envelope {
                     classify: classify_retcode(resp.retcode),
                     status: resp.status,
@@ -276,11 +267,7 @@ impl OneBotAdapter {
 
     /// crate 内部:让反向 WS 服务端复用这条 demux+decode 管线。返回 `true` 表示下游 `sink`
     /// 已关闭(调用方应停止)。
-    pub(crate) async fn handle_inbound_public(
-        self: &Arc<Self>,
-        txt: &str,
-        sink: &mpsc::Sender<Event>,
-    ) -> bool {
+    pub(crate) async fn handle_inbound_public(self: &Arc<Self>, txt: &str, sink: &mpsc::Sender<Event>) -> bool {
         self.handle_inbound(txt, sink).await
     }
     /// crate 内部:服务端连接断开时让所有挂起调用失败。
@@ -297,11 +284,7 @@ impl OneBotAdapter {
     }
     /// 与 `dispatch_inbound_text` 类似,但额外返回解码出的事件(若有),供调用方施加 quick-op
     /// hook。由 HTTP-POST 处理器使用。
-    pub(crate) async fn dispatch_and_decode(
-        self: &Arc<Self>,
-        txt: &str,
-        sink: &mpsc::Sender<Event>,
-    ) -> Option<Event> {
+    pub(crate) async fn dispatch_and_decode(self: &Arc<Self>, txt: &str, sink: &mpsc::Sender<Event>) -> Option<Event> {
         match serde_json::from_str::<Inbound>(txt) {
             Ok(Inbound::Event(ev)) => {
                 // HTTP-POST 的事件帧只到这里(不经 handle_inbound),故在此原样记一帧 dir=in。
@@ -385,12 +368,8 @@ impl OneBotAdapter {
         outbound_rx: &mut mpsc::Receiver<String>,
         shutdown: &ShutdownToken,
     ) -> std::result::Result<(), TransportError> {
-        let req = self
-            .build_request()
-            .map_err(|e| TransportError::WebSocket(e.to_string()))?;
-        let (ws, _resp) = connect_async(req)
-            .await
-            .map_err(|e| TransportError::WebSocket(e.to_string()))?;
+        let req = self.build_request().map_err(|e| TransportError::WebSocket(e.to_string()))?;
+        let (ws, _resp) = connect_async(req).await.map_err(|e| TransportError::WebSocket(e.to_string()))?;
         // run_once 仅 Forward 模式可达（其余模式在 `run` 里已分流），故 url 取 Forward{url}。
         let url = match &self.config.mode {
             OneBotTransport::Forward { url } => url.as_str(),
@@ -407,16 +386,8 @@ impl OneBotAdapter {
             let adapter = Arc::clone(self);
             tokio::spawn(async move {
                 if let Ok(data) = adapter.call("get_version_info", serde_json::json!({})).await {
-                    let name = data
-                        .get("app_name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-                    let version = data
-                        .get("app_version")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string();
+                    let name = data.get("app_name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                    let version = data.get("app_version").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
                     let vendor = nagisa_types::vendor::Vendor::from_app_name(&name);
                     tracing::info!(impl_name = %name, impl_version = %version, ?vendor, "onebot impl info");
                     let _ = adapter.vendor.set(vendor);
@@ -518,17 +489,11 @@ impl OneBotAdapter {
                 }
                 false
             }
-            Ok(Inbound::Event(ev)) => {
-                dispatch_event(sink, decode_event(*ev), self.vendor()).await
-            }
+            Ok(Inbound::Event(ev)) => dispatch_event(sink, decode_event(*ev), self.vendor()).await,
             Err(_) => {
                 // 解不开的帧:尽量浮现为 Raw 而不是丢掉。
                 let raw = serde_json::from_str::<Value>(txt).unwrap_or(Value::Null);
-                let event = Event::Raw(RawEvent {
-                    protocol: PROTO,
-                    kind: "undecodable".to_string(),
-                    raw,
-                });
+                let event = Event::Raw(RawEvent { protocol: PROTO, kind: "undecodable".to_string(), raw });
                 sink.send(event).await.is_err()
             }
         }
@@ -537,11 +502,7 @@ impl OneBotAdapter {
 
 #[async_trait]
 impl EventSource for OneBotAdapter {
-    async fn run(
-        self: Arc<Self>,
-        sink: mpsc::Sender<Event>,
-        shutdown: ShutdownToken,
-    ) -> Result<()> {
+    async fn run(self: Arc<Self>, sink: mpsc::Sender<Event>, shutdown: ShutdownToken) -> Result<()> {
         // 模式分发。正向 WS 跑下面的循环;其余每种模式都委托给各自的服务端/客户端驱动
         // (它们复用本适配器上共享的解码 + pending-map 管线)。
         match self.config.mode.clone() {
@@ -550,10 +511,8 @@ impl EventSource for OneBotAdapter {
                 return crate::reverse_ws::run_reverse_ws(self, bind, path, sink, shutdown).await;
             }
             OneBotTransport::Http { api_url, post_bind, post_path, secret } => {
-                return crate::http_post::run_http_post(
-                    self, api_url, post_bind, post_path, secret, sink, shutdown,
-                )
-                .await;
+                return crate::http_post::run_http_post(self, api_url, post_bind, post_path, secret, sink, shutdown)
+                    .await;
             }
             OneBotTransport::HttpApi { api_url } => {
                 // 纯动作客户端:装好 HTTP-API 客户端使 `call_http` 可用,然后空转(本传输不上报
@@ -564,10 +523,7 @@ impl EventSource for OneBotAdapter {
                 return Ok(());
             }
             OneBotTransport::LLOneBotHttp { api_url, events } => {
-                return crate::http_post::run_llonebot_http(
-                    self, api_url, events, sink, shutdown,
-                )
-                .await;
+                return crate::http_post::run_llonebot_http(self, api_url, events, sink, shutdown).await;
             }
         }
         // 一次性取出出站接收端(EventSource::run 只能调一次)。每轮连接由「连一次」闭包从
@@ -581,10 +537,7 @@ impl EventSource for OneBotAdapter {
         // 重连退避：起点 500ms、封顶 30s、倍率 2；jitter 由 seq 计数器派生
         // (+ 至多 25%，无 rng 依赖)。断开副作用(清 pending + 发 Meta::Disconnect + 记日志)
         // 留在「连一次」闭包内,与退避骨架解耦(见 nagisa_core::reconnect)。
-        let backoff = nagisa_core::reconnect::Backoff::new(
-            Duration::from_millis(500),
-            Duration::from_secs(30),
-        );
+        let backoff = nagisa_core::reconnect::Backoff::new(Duration::from_millis(500), Duration::from_secs(30));
         let me = &self;
         let sink_ref = &sink;
         let shutdown_ref = &shutdown;
@@ -677,14 +630,10 @@ impl ActionInvoker for OneBotAdapter {
         if let [Segment::Forward(Forward::Nodes { nodes, .. })] = message {
             let messages = Self::encode_forward_nodes(nodes);
             let (action, params) = match peer.scene {
-                Scene::Group => (
-                    "send_group_forward_msg",
-                    json!({ "group_id": peer.id.0, "messages": messages }),
-                ),
-                Scene::Friend | Scene::Temp => (
-                    "send_private_forward_msg",
-                    json!({ "user_id": peer.id.0, "messages": messages }),
-                ),
+                Scene::Group => ("send_group_forward_msg", json!({ "group_id": peer.id.0, "messages": messages })),
+                Scene::Friend | Scene::Temp => {
+                    ("send_private_forward_msg", json!({ "user_id": peer.id.0, "messages": messages }))
+                }
             };
             let data = self.call(action, params).await?;
             let onebot_id = data_i64(&data, "message_id").map(|v| v as i32);
@@ -694,14 +643,8 @@ impl ActionInvoker for OneBotAdapter {
         let wire = encode_segments(message);
         let segs = serde_json::to_value(&wire).map_err(Error::Decode)?;
         let (action, params) = match peer.scene {
-            Scene::Group => (
-                "send_group_msg",
-                json!({ "group_id": peer.id.0, "message": segs }),
-            ),
-            Scene::Friend | Scene::Temp => (
-                "send_private_msg",
-                json!({ "user_id": peer.id.0, "message": segs }),
-            ),
+            Scene::Group => ("send_group_msg", json!({ "group_id": peer.id.0, "message": segs })),
+            Scene::Friend | Scene::Temp => ("send_private_msg", json!({ "user_id": peer.id.0, "message": segs })),
         };
         let data = self.call(action, params).await?;
         let onebot_id = data_i64(&data, "message_id").map(|v| v as i32);
@@ -709,9 +652,9 @@ impl ActionInvoker for OneBotAdapter {
     }
 
     async fn recall(&self, id: &MessageId) -> Result<()> {
-        let mid = id.onebot_id.ok_or_else(|| {
-            Error::action_kind(ActionErrorKind::BadParams, "message id has no onebot_id")
-        })?;
+        let mid = id
+            .onebot_id
+            .ok_or_else(|| Error::action_kind(ActionErrorKind::BadParams, "message id has no onebot_id"))?;
         self.call("delete_msg", json!({ "message_id": mid })).await?;
         Ok(())
     }
@@ -733,10 +676,8 @@ impl ActionInvoker for OneBotAdapter {
         };
         obj.insert("post_type".into(), Value::String("message".into()));
         // `get_msg` 返回 `message_type`(group/private);缺省时默认按 private。
-        obj.entry("message_type".to_string())
-            .or_insert(Value::String("private".into()));
-        let ev: crate::wire::RawEventJson =
-            serde_json::from_value(Value::Object(obj)).map_err(Error::Decode)?;
+        obj.entry("message_type".to_string()).or_insert(Value::String("private".into()));
+        let ev: crate::wire::RawEventJson = serde_json::from_value(Value::Object(obj)).map_err(Error::Decode)?;
         match decode_event(ev) {
             Event::Message(m) => Ok(*m),
             _ => Err(Error::action("get_msg response did not decode to a message")),
@@ -751,95 +692,54 @@ impl ActionInvoker for OneBotAdapter {
     }
 
     async fn get_group_info(&self, group: Uin, no_cache: bool) -> Result<GroupInfo> {
-        let data = self
-            .call("get_group_info", json!({ "group_id": group.0, "no_cache": no_cache }))
-            .await?;
+        let data = self.call("get_group_info", json!({ "group_id": group.0, "no_cache": no_cache })).await?;
         Ok(group_info_from(&data))
     }
 
     async fn get_group_list(&self, no_cache: bool) -> Result<Vec<GroupInfo>> {
         let data = self.call("get_group_list", json!({ "no_cache": no_cache })).await?;
-        Ok(data
-            .as_array()
-            .map(|a| a.iter().map(group_info_from).collect())
-            .unwrap_or_default())
+        Ok(data.as_array().map(|a| a.iter().map(group_info_from).collect()).unwrap_or_default())
     }
 
-    async fn get_group_member_info(
-        &self,
-        group: Uin,
-        user: Uin,
-        no_cache: bool,
-    ) -> Result<MemberInfo> {
+    async fn get_group_member_info(&self, group: Uin, user: Uin, no_cache: bool) -> Result<MemberInfo> {
         let data = self
-            .call(
-                "get_group_member_info",
-                json!({ "group_id": group.0, "user_id": user.0, "no_cache": no_cache }),
-            )
+            .call("get_group_member_info", json!({ "group_id": group.0, "user_id": user.0, "no_cache": no_cache }))
             .await?;
         Ok(member_info_from(&data))
     }
 
     async fn get_group_member_list(&self, group: Uin, no_cache: bool) -> Result<Vec<MemberInfo>> {
-        let data = self
-            .call("get_group_member_list", json!({ "group_id": group.0, "no_cache": no_cache }))
-            .await?;
-        Ok(data
-            .as_array()
-            .map(|a| a.iter().map(member_info_from).collect())
-            .unwrap_or_default())
+        let data = self.call("get_group_member_list", json!({ "group_id": group.0, "no_cache": no_cache })).await?;
+        Ok(data.as_array().map(|a| a.iter().map(member_info_from).collect()).unwrap_or_default())
     }
 
     async fn get_friend_list(&self, no_cache: bool) -> Result<Vec<FriendInfo>> {
         let data = self.call("get_friend_list", json!({ "no_cache": no_cache })).await?;
-        Ok(data
-            .as_array()
-            .map(|a| a.iter().map(friend_info_from).collect())
-            .unwrap_or_default())
+        Ok(data.as_array().map(|a| a.iter().map(friend_info_from).collect()).unwrap_or_default())
     }
 
     async fn set_group_member_mute(&self, group: Uin, user: Uin, duration: u32) -> Result<()> {
-        self.call(
-            "set_group_ban",
-            json!({ "group_id": group.0, "user_id": user.0, "duration": duration }),
-        )
-        .await?;
+        self.call("set_group_ban", json!({ "group_id": group.0, "user_id": user.0, "duration": duration })).await?;
         Ok(())
     }
 
     async fn set_group_whole_mute(&self, group: Uin, enable: bool) -> Result<()> {
-        self.call(
-            "set_group_whole_ban",
-            json!({ "group_id": group.0, "enable": enable }),
-        )
-        .await?;
+        self.call("set_group_whole_ban", json!({ "group_id": group.0, "enable": enable })).await?;
         Ok(())
     }
 
     async fn set_group_admin(&self, group: Uin, user: Uin, enable: bool) -> Result<()> {
-        self.call(
-            "set_group_admin",
-            json!({ "group_id": group.0, "user_id": user.0, "enable": enable }),
-        )
-        .await?;
+        self.call("set_group_admin", json!({ "group_id": group.0, "user_id": user.0, "enable": enable })).await?;
         Ok(())
     }
 
     async fn set_group_member_card(&self, group: Uin, user: Uin, card: &str) -> Result<()> {
-        self.call(
-            "set_group_card",
-            json!({ "group_id": group.0, "user_id": user.0, "card": card }),
-        )
-        .await?;
+        self.call("set_group_card", json!({ "group_id": group.0, "user_id": user.0, "card": card })).await?;
         Ok(())
     }
 
     async fn set_group_name(&self, group: Uin, name: &str) -> Result<()> {
-        self.call(
-            "set_group_name",
-            json!({ "group_id": group.0, "group_name": name }),
-        )
-        .await?;
+        self.call("set_group_name", json!({ "group_id": group.0, "group_name": name })).await?;
         Ok(())
     }
 
@@ -852,20 +752,12 @@ impl ActionInvoker for OneBotAdapter {
         Ok(())
     }
 
-    async fn handle_request(
-        &self,
-        token: &RequestToken,
-        approve: bool,
-        reason: Option<&str>,
-    ) -> Result<()> {
+    async fn handle_request(&self, token: &RequestToken, approve: bool, reason: Option<&str>) -> Result<()> {
         // 拆开不透明的 OneBot flag。flag 本身分不出好友请求还是群请求;OneBot 两者端点不同。
         // 我们对裸 flag 先试好友端点,对带 Lagrange 群请求那种复合形态
         // "{seq}-{groupUin}-{eventType}" 的 flag 走群端点。
         let RequestTokenInner::OneBotFlag(flag) = &token.0 else {
-            return Err(Error::action_kind(
-                ActionErrorKind::BadParams,
-                "request token is not an OneBot flag",
-            ));
+            return Err(Error::action_kind(ActionErrorKind::BadParams, "request token is not an OneBot flag"));
         };
         // Lagrange 群 flag 形如 "{seq}-{groupUin}-{eventType}[-{isFiltered}]"。
         // eventType 1 = 加群请求(sub_type "add"),2 = 自身被邀请(sub_type "invite")。
@@ -949,23 +841,14 @@ impl ActionInvoker for OneBotAdapter {
         Ok(data_str(&data, "file_id").unwrap_or_default())
     }
 
-    async fn upload_private_file(
-        &self,
-        user: Uin,
-        src: ResourceSource,
-        name: &str,
-    ) -> Result<String> {
+    async fn upload_private_file(&self, user: Uin, src: ResourceSource, name: &str) -> Result<String> {
         let file = crate::encode::encode_source(&src);
-        let data = self
-            .call("upload_private_file", json!({ "user_id": user.0, "file": file, "name": name }))
-            .await?;
+        let data = self.call("upload_private_file", json!({ "user_id": user.0, "file": file, "name": name })).await?;
         Ok(data_str(&data, "file_id").unwrap_or_default())
     }
 
     async fn get_user_info(&self, user: Uin, no_cache: bool) -> Result<UserInfo> {
-        let data = self
-            .call("get_stranger_info", json!({ "user_id": user.0, "no_cache": no_cache }))
-            .await?;
+        let data = self.call("get_stranger_info", json!({ "user_id": user.0, "no_cache": no_cache })).await?;
         Ok(user_info_from(&data))
     }
 
@@ -978,24 +861,16 @@ impl ActionInvoker for OneBotAdapter {
         // Lagrange 用合成的整型 `message_id` 寻址历史锚点;`0`(该字段默认值)表示「从最新消息起」。
         let anchor = start.and_then(|m| m.onebot_id).unwrap_or(0);
         let (action, params, is_group) = match peer.scene {
-            Scene::Group => (
-                "get_group_msg_history",
-                json!({ "group_id": peer.id.0, "message_id": anchor, "count": count }),
-                true,
-            ),
-            Scene::Friend | Scene::Temp => (
-                "get_friend_msg_history",
-                json!({ "user_id": peer.id.0, "message_id": anchor, "count": count }),
-                false,
-            ),
+            Scene::Group => {
+                ("get_group_msg_history", json!({ "group_id": peer.id.0, "message_id": anchor, "count": count }), true)
+            }
+            Scene::Friend | Scene::Temp => {
+                ("get_friend_msg_history", json!({ "user_id": peer.id.0, "message_id": anchor, "count": count }), false)
+            }
         };
         let data = self.call(action, params).await?;
         // 响应:`{ "messages": [ <完整 onebot 消息事件>, ... ] }`。
-        let arr = data
-            .get("messages")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
+        let arr = data.get("messages").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         let mut out = Vec::with_capacity(arr.len());
         for entry in arr {
             // 复用事件解码路径(同 `get_message`):给每条打上 `message` post 标签,过一遍
@@ -1005,11 +880,12 @@ impl ActionInvoker for OneBotAdapter {
                 _ => continue,
             };
             obj.insert("post_type".into(), Value::String("message".into()));
-            obj.entry("message_type".to_string()).or_insert(Value::String(
-                if is_group { "group".into() } else { "private".into() },
-            ));
-            let Ok(ev) = serde_json::from_value::<crate::wire::RawEventJson>(Value::Object(obj))
-            else {
+            obj.entry("message_type".to_string()).or_insert(Value::String(if is_group {
+                "group".into()
+            } else {
+                "private".into()
+            }));
+            let Ok(ev) = serde_json::from_value::<crate::wire::RawEventJson>(Value::Object(obj)) else {
                 continue;
             };
             if let Event::Message(m) = decode_event(ev) {
@@ -1020,21 +896,11 @@ impl ActionInvoker for OneBotAdapter {
     }
 
     async fn leave_group(&self, group: Uin, dismiss: bool) -> Result<()> {
-        self.call(
-            "set_group_leave",
-            json!({ "group_id": group.0, "is_dismiss": dismiss }),
-        )
-        .await?;
+        self.call("set_group_leave", json!({ "group_id": group.0, "is_dismiss": dismiss })).await?;
         Ok(())
     }
 
-    async fn set_group_member_special_title(
-        &self,
-        group: Uin,
-        user: Uin,
-        title: &str,
-        duration: i64,
-    ) -> Result<()> {
+    async fn set_group_member_special_title(&self, group: Uin, user: Uin, title: &str, duration: i64) -> Result<()> {
         self.call(
             "set_group_special_title",
             json!({ "group_id": group.0, "user_id": user.0, "special_title": title, "duration": duration }),
@@ -1057,18 +923,12 @@ impl ActionInvoker for OneBotAdapter {
     }
 
     async fn get_group_file_download_url(&self, group: Uin, file_id: &str) -> Result<String> {
-        let data = self
-            .call("get_group_file_url", json!({ "group_id": group.0, "file_id": file_id }))
-            .await?;
+        let data = self.call("get_group_file_url", json!({ "group_id": group.0, "file_id": file_id })).await?;
         Ok(data_str(&data, "url").unwrap_or_default())
     }
 
     async fn delete_group_file(&self, group: Uin, file_id: &str) -> Result<()> {
-        self.call(
-            "delete_group_file",
-            json!({ "group_id": group.0, "file_id": file_id }),
-        )
-        .await?;
+        self.call("delete_group_file", json!({ "group_id": group.0, "file_id": file_id })).await?;
         Ok(())
     }
 
@@ -1101,9 +961,7 @@ impl ActionInvoker for OneBotAdapter {
     }
 
     async fn get_cookies(&self, domain: Option<&str>) -> Result<String> {
-        let data = self
-            .call("get_cookies", json!({ "domain": domain.unwrap_or("") }))
-            .await?;
+        let data = self.call("get_cookies", json!({ "domain": domain.unwrap_or("") })).await?;
         Ok(data_str(&data, "cookies").unwrap_or_default())
     }
 
@@ -1115,9 +973,7 @@ impl ActionInvoker for OneBotAdapter {
     // `{type:"node", data:{user_id, nickname, content:[...]}}`——NapCat 把节点正文放在
     // `message` 下,Lagrange/官方放在 `content` 下。
     async fn get_forward_messages(&self, forward_id: &str) -> Result<Vec<ForwardNode>> {
-        let data = self
-            .call("get_forward_msg", json!({ "id": forward_id, "message_id": forward_id }))
-            .await?;
+        let data = self.call("get_forward_msg", json!({ "id": forward_id, "message_id": forward_id })).await?;
         let arr = data
             .get("messages")
             .or_else(|| data.get("message"))
@@ -1134,9 +990,8 @@ impl ActionInvoker for OneBotAdapter {
             let content_val = body.get("content").or_else(|| body.get("message"));
             // 独立展开的转发没有固有的会话对端(节点已脱离任何聊天);嵌套 `reply` 段用中性的
             // group(0) 对端——与 Milky 的 forward_node_from_value 对齐。
-            let content = content_val
-                .map(|c| crate::decode::decode_message_value(c, Peer::group(0)))
-                .unwrap_or_default();
+            let content =
+                content_val.map(|c| crate::decode::decode_message_value(c, Peer::group(0))).unwrap_or_default();
             let time = body.get("time").and_then(Value::as_i64);
             out.push(ForwardNode { user, name, content, time });
         }
@@ -1193,10 +1048,7 @@ impl ActionInvoker for OneBotAdapter {
     //   {notice_id, sender_id, publish_time, message:{text, images:[{id,...}]}}。
     async fn get_group_announcements(&self, group: Uin) -> Result<Vec<Announcement>> {
         let data = self.call("_get_group_notice", json!({ "group_id": group.0 })).await?;
-        Ok(data
-            .as_array()
-            .map(|a| a.iter().map(|v| announcement_from(group, v)).collect())
-            .unwrap_or_default())
+        Ok(data.as_array().map(|a| a.iter().map(|v| announcement_from(group, v)).collect()).unwrap_or_default())
     }
 
     // ENDPOINT: Lagrange Lagrange.OneBot/Core/Operation/Group/DeleteGroupMemoOperation.cs
@@ -1223,10 +1075,7 @@ impl ActionInvoker for OneBotAdapter {
     // (→ 空消息)。
     async fn get_essence_messages(&self, group: Uin) -> Result<Vec<EssenceMessage>> {
         let data = self.call("get_essence_msg_list", json!({ "group_id": group.0 })).await?;
-        Ok(data
-            .as_array()
-            .map(|a| a.iter().map(|v| essence_from(group, v)).collect())
-            .unwrap_or_default())
+        Ok(data.as_array().map(|a| a.iter().map(|v| essence_from(group, v)).collect()).unwrap_or_default())
     }
 
     // ===== 群文件 =====
@@ -1240,10 +1089,7 @@ impl ActionInvoker for OneBotAdapter {
     async fn get_group_files(&self, group: Uin, folder_id: Option<&str>) -> Result<GroupFileList> {
         let (action, params) = match folder_id {
             None => ("get_group_root_files", json!({ "group_id": group.0 })),
-            Some(fid) => (
-                "get_group_files_by_folder",
-                json!({ "group_id": group.0, "folder_id": fid }),
-            ),
+            Some(fid) => ("get_group_files_by_folder", json!({ "group_id": group.0, "folder_id": fid })),
         };
         let data = self.call(action, params).await?;
         let files = data
@@ -1263,12 +1109,7 @@ impl ActionInvoker for OneBotAdapter {
     //   (https://github.com/LagrangeDev/Lagrange.Core);亦见 NapCat
     //   file/GetPrivateFileUrl.ts。参数 {user_id, file_id[, file_hash]}。
     // 响应 {url}。
-    async fn get_private_file_download_url(
-        &self,
-        user: Uin,
-        file_id: &str,
-        hash: Option<&str>,
-    ) -> Result<String> {
+    async fn get_private_file_download_url(&self, user: Uin, file_id: &str, hash: Option<&str>) -> Result<String> {
         let mut params = json!({ "user_id": user.0, "file_id": file_id });
         if let Some(h) = hash {
             // Lagrange 用文件内容哈希(`file_hash`)寻址文件。
@@ -1283,9 +1124,7 @@ impl ActionInvoker for OneBotAdapter {
     //   `create_group_file_folder`。参数 {group_id, name}。响应形态各异
     //   (Lagrange `{msg}`、NapCat `{result, groupItem}`);尽力提取文件夹 id,取不到则空。
     async fn create_group_folder(&self, group: Uin, name: &str) -> Result<String> {
-        let data = self
-            .call("create_group_file_folder", json!({ "group_id": group.0, "name": name }))
-            .await?;
+        let data = self.call("create_group_file_folder", json!({ "group_id": group.0, "name": name })).await?;
         let id = data_str(&data, "folder_id")
             .or_else(|| data.get("groupItem").and_then(|gi| data_str(gi, "folderId")))
             .or_else(|| data.get("groupItem").and_then(|gi| data_str(gi, "folder_id")))
@@ -1296,12 +1135,7 @@ impl ActionInvoker for OneBotAdapter {
     // ENDPOINT: Lagrange Lagrange.OneBot/Core/Operation/File/RenameGroupFileFolderOperation.cs
     //   (https://github.com/LagrangeDev/Lagrange.Core);亦见 LLOneBot
     //   llbot/file/RenameGroupFileFolder.ts。参数 {group_id, folder_id, new_folder_name}。
-    async fn rename_group_folder(
-        &self,
-        group: Uin,
-        folder_id: &str,
-        new_name: &str,
-    ) -> Result<()> {
+    async fn rename_group_folder(&self, group: Uin, folder_id: &str, new_name: &str) -> Result<()> {
         self.call(
             "rename_group_file_folder",
             json!({ "group_id": group.0, "folder_id": folder_id, "new_folder_name": new_name }),
@@ -1390,11 +1224,7 @@ impl ActionInvoker for OneBotAdapter {
     //   `set_group_portrait`。参数 {group_id, file}(资源→file 编码)。
     async fn set_group_avatar(&self, group: Uin, src: ResourceSource) -> Result<()> {
         let file = crate::encode::encode_source(&src);
-        self.call(
-            "set_group_portrait",
-            json!({ "group_id": group.0, "file": file }),
-        )
-        .await?;
+        self.call("set_group_portrait", json!({ "group_id": group.0, "file": file })).await?;
         Ok(())
     }
 
@@ -1444,11 +1274,7 @@ impl ActionInvoker for OneBotAdapter {
     }
 
     async fn call_raw(&self, action: &str, params: Value) -> Result<Value> {
-        let params = if params.is_null() {
-            Value::Object(Map::new())
-        } else {
-            params
-        };
+        let params = if params.is_null() { Value::Object(Map::new()) } else { params };
         self.call(action, params).await
     }
 

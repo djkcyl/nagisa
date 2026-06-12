@@ -116,28 +116,18 @@ pub fn to_me() -> Rule {
 
 /// 仅群消息。
 pub fn group_only() -> Rule {
-    Rule::pred(|ctx| {
-        ctx.message().map(|m| m.peer.scene == Scene::Group).unwrap_or(false)
-    })
+    Rule::pred(|ctx| ctx.message().map(|m| m.peer.scene == Scene::Group).unwrap_or(false))
 }
 
 /// 仅私聊（好友/临时）消息。
 pub fn private() -> Rule {
-    Rule::pred(|ctx| {
-        ctx.message()
-            .map(|m| matches!(m.peer.scene, Scene::Friend | Scene::Temp))
-            .unwrap_or(false)
-    })
+    Rule::pred(|ctx| ctx.message().map(|m| matches!(m.peer.scene, Scene::Friend | Scene::Temp)).unwrap_or(false))
 }
 
 /// 限定群。
 pub fn in_group(group: impl Into<Uin>) -> Rule {
     let g = group.into();
-    Rule::pred(move |ctx| {
-        ctx.message()
-            .map(|m| m.peer.scene == Scene::Group && m.peer.id == g)
-            .unwrap_or(false)
-    })
+    Rule::pred(move |ctx| ctx.message().map(|m| m.peer.scene == Scene::Group && m.peer.id == g).unwrap_or(false))
 }
 
 /// 限定发送者。
@@ -381,7 +371,6 @@ fn awake_inner() -> Rule {
 pub fn awake() -> Rule {
     replying(awake_inner(), || vec![Segment::text("Zzz")])
 }
-
 
 /// [`awake`] 的静默变体：睡着时**纯静默否决**（不记 `GateReply`、不回话）。
 pub fn awake_silent() -> Rule {

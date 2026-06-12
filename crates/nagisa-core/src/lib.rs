@@ -69,20 +69,20 @@ pub mod args;
 pub mod bot;
 pub mod event_trigger;
 pub use event_trigger::{
-    AdminChange, BotOffline, BotOnline, Connect, Disconnect, EventKind, FriendAdd, FriendRequest,
-    GroupCardChange, GroupJoinRequest, Heartbeat, Honor, LuckyKing, MemberJoin, MemberLeave, Mute,
-    Nudge, Ready, Recall,
+    AdminChange, BotOffline, BotOnline, Connect, Disconnect, EventKind, FriendAdd, FriendRequest, GroupCardChange,
+    GroupJoinRequest, Heartbeat, Honor, LuckyKing, MemberJoin, MemberLeave, Mute, Nudge, Ready, Recall,
 };
 pub mod plugin;
 pub use plugin::{
-    registered_plugins, registered_triggers_resolved, Category, PluginMeta, PluginSpec, SwitchKey,
-    TriggerKind, TriggerMeta,
+    registered_plugins, registered_triggers_resolved, Category, PluginMeta, PluginSpec, SwitchKey, TriggerKind,
+    TriggerMeta,
 };
 pub mod cooldown;
 pub mod ctx;
 pub mod dispatch;
 pub mod enabled;
 pub mod extract;
+pub mod framesource;
 pub mod handler;
 pub mod impl_info;
 pub mod invoker;
@@ -90,20 +90,19 @@ pub mod matcher;
 pub mod middleware;
 pub mod ratelimit;
 pub mod reconnect;
-pub mod sse;
-pub mod wire;
-pub mod framesource;
-pub mod rendezvous;
-pub mod session;
 pub mod refs;
 pub mod registry;
+pub mod rendezvous;
 pub mod router;
 pub mod rule;
 pub mod service;
+pub mod session;
 pub mod slots;
 pub mod source;
+pub mod sse;
+pub mod wire;
 
-pub use args::{ArgError, ArgKind, ArgSpec, Args, ArgsMeta, ArgToken, FromArg, ParseArgs};
+pub use args::{ArgError, ArgKind, ArgSpec, ArgToken, Args, ArgsMeta, FromArg, ParseArgs};
 pub use bot::{add_outgoing_logger, set_outgoing_logger, Bot};
 pub use impl_info::ImplInfo;
 pub use nagisa_types::vendor::Vendor;
@@ -131,28 +130,25 @@ pub use ctx::{Ctx, DevMode};
 pub use dispatch::run_dispatch;
 pub use enabled::{EnabledOverrides, EnabledSet};
 pub use extract::{
-    ArgText, At, Captures, Command, CommandArg, EventPeer, Extracted, FromContext, GroupMessage,
-    Image, PrivateMessage, Reject, Reply, ReplyMsg, Sender, State, ToMe,
+    ArgText, At, Captures, Command, CommandArg, EventPeer, Extracted, FromContext, GroupMessage, Image, PrivateMessage,
+    Reject, Reply, ReplyMsg, Sender, State, ToMe,
 };
-pub use matcher::{regex_escape, CommandUsage, Flank, Matcher, ParsedCommand, SlotSpec};
-pub use slots::{FromSlots, FromTailText, NamedCaptures, SlotValue, Slots, Tail};
-pub use middleware::{Flow, Middleware, Next};
-pub use ratelimit::{RateLimit, RateLimitScope};
-pub use rendezvous::{Rendezvous, RendezvousSnapshot};
-pub use session::{
-    Delivery, FlightGuard, FlightStore, Scope, Session, WaitFlow, Waiter, WaiterDepth, WaiterStore,
-};
-pub use nagisa_types::event::{Meta, Notice, Request};
 pub use handler::{Handler, HandlerOutcome, HandlerResult, IntoHandlerResult};
-pub use registry::{collect_into, registered_triggers, TriggerSpec};
+pub use matcher::{regex_escape, CommandUsage, Flank, Matcher, ParsedCommand, SlotSpec};
+pub use middleware::{Flow, Middleware, Next};
+pub use nagisa_types::event::{Meta, Notice, Request};
+pub use ratelimit::{RateLimit, RateLimitScope};
 pub use refs::{FriendRef, GroupRef, MemberRef};
+pub use registry::{collect_into, registered_triggers, TriggerSpec};
+pub use rendezvous::{Rendezvous, RendezvousSnapshot};
 pub use router::Router;
 pub use rule::{
-    awake, awake_silent, from_user, group_admin, group_only, group_owner, in_group, keyword,
-    private, replying, superuser, switch, to_me, GateReply, KillSwitch, Rule,
-    SleepState, Superusers,
+    awake, awake_silent, from_user, group_admin, group_only, group_owner, in_group, keyword, private, replying,
+    superuser, switch, to_me, GateReply, KillSwitch, Rule, SleepState, Superusers,
 };
 pub use service::{Service, ServiceBus, Supervisor};
+pub use session::{Delivery, FlightGuard, FlightStore, Scope, Session, WaitFlow, Waiter, WaiterDepth, WaiterStore};
+pub use slots::{FromSlots, FromTailText, NamedCaptures, SlotValue, Slots, Tail};
 
 /// re-export `inventory`，使 `#[command]` 生成的代码可调用
 /// `::nagisa_core::inventory::submit!`。业务/插件 crate 无需直接依赖 `inventory`。

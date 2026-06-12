@@ -44,11 +44,7 @@ fn find_args_inner(func: &ItemFn) -> Option<&Type> {
 /// cooldown 只在左侧门全过后才盖戳——`gate & Cooldown::from(<cd>).into_rule(..)`。cooldown
 /// 的 `TriggerId` 引用 register 函数运行期的 `plugin_key`/`key` 绑定（拼接点处在作用域内），
 /// 故各触发器的作用域键正确。
-fn lower_gate(
-    nc: &proc_macro2::TokenStream,
-    gate: &Option<Expr>,
-    cooldown: &Option<Expr>,
-) -> proc_macro2::TokenStream {
+fn lower_gate(nc: &proc_macro2::TokenStream, gate: &Option<Expr>, cooldown: &Option<Expr>) -> proc_macro2::TokenStream {
     let cd_rule = cooldown.as_ref().map(|cd| {
         quote! {
             #nc::Cooldown::from(#cd).into_rule(#nc::TriggerId::of(plugin_key, key))
@@ -67,10 +63,7 @@ fn lower_gate(
 /// `async fn`。`macro_name`（`"#[command]"`/`"#[event]"`）只用于报错文案。
 fn validate_handler_fn(func: &ItemFn, macro_name: &str) -> syn::Result<()> {
     if func.sig.asyncness.is_none() {
-        return Err(Error::new_spanned(
-            func.sig.fn_token,
-            format!("`{macro_name}` requires an `async fn`"),
-        ));
+        return Err(Error::new_spanned(func.sig.fn_token, format!("`{macro_name}` requires an `async fn`")));
     }
     if !func.sig.generics.params.is_empty() {
         return Err(Error::new_spanned(
@@ -80,10 +73,7 @@ fn validate_handler_fn(func: &ItemFn, macro_name: &str) -> syn::Result<()> {
     }
     if let Some(first) = func.sig.inputs.first() {
         if matches!(first, FnArg::Receiver(_)) {
-            return Err(Error::new_spanned(
-                first,
-                format!("`{macro_name}` must be a free `async fn`, not a method"),
-            ));
+            return Err(Error::new_spanned(first, format!("`{macro_name}` must be a free `async fn`, not a method")));
         }
     }
     Ok(())
@@ -123,11 +113,8 @@ fn emit_trigger(
     let key_const_name = format_ident!("{}_KEY", fn_name);
 
     // 从被标注函数上收集 cfg/cfg_attr 属性,镜像到 register 函数上。
-    let cfg_attrs: Vec<_> = func
-        .attrs
-        .iter()
-        .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
-        .collect();
+    let cfg_attrs: Vec<_> =
+        func.attrs.iter().filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr")).collect();
 
     // —— 插件/触发器元数据（→ `TriggerMeta`）。缺省：id=name=fn 名、
     //    can_disable/default_enable=true、hidden=false。——
@@ -142,8 +129,7 @@ fn emit_trigger(
     let hidden = meta.hidden.unwrap_or(false);
     let order = meta.order.unwrap_or(0);
 
-    let TriggerVariant { register_prelude, register_call, trigger_kind, meta_words, meta_args } =
-        variant;
+    let TriggerVariant { register_prelude, register_call, trigger_kind, meta_words, meta_args } = variant;
 
     quote! {
         #func

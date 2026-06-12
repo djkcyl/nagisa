@@ -76,10 +76,7 @@ pub fn friend_info(f: &FriendEntity) -> FriendInfo {
         sex: sex_from_wire(f.sex),
         remark: f.remark.clone(),
         qid: (!f.qid.is_empty()).then(|| f.qid.clone()),
-        category: f.category.as_ref().map(|c| FriendCategory {
-            id: c.category_id,
-            name: c.category_name.clone(),
-        }),
+        category: f.category.as_ref().map(|c| FriendCategory { id: c.category_id, name: c.category_name.clone() }),
         // Milky IR FriendEntity 既无 Lagrange 那种 `group`,也无 NapCat/LLOneBot 的
         // birthday/phone/email/login_days/long_nick 扩展字段。
         group: None,
@@ -114,16 +111,11 @@ pub fn announcement_from_value(data: &Value) -> nagisa_types::entity::Announceme
 /// OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/group.ts (get_group_essence_messages)
 pub fn essence_message_from_value(data: &Value) -> nagisa_types::entity::EssenceMessage {
     let group = Uin(get_i64(data, "group_id"));
-    let peer = Peer {
-        scene: Scene::Group,
-        id: group,
-    };
+    let peer = Peer { scene: Scene::Group, id: group };
     let message_seq = get_i64(data, "message_seq");
     // segments 是 IncomingSegment 列表；解析失败则降级为空内容（宽松）。
-    let segments: Vec<IncomingSegment> = data
-        .get("segments")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
+    let segments: Vec<IncomingSegment> =
+        data.get("segments").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
     nagisa_types::entity::EssenceMessage {
         group,
         message_id: MessageId::from_seq(peer, message_seq),
@@ -161,10 +153,7 @@ pub fn group_folder_from_value(data: &Value) -> nagisa_types::entity::GroupFolde
     nagisa_types::entity::GroupFolder {
         id: get_str(data, "folder_id"),
         name: get_str(data, "folder_name"),
-        file_count: data
-            .get("file_count")
-            .and_then(Value::as_i64)
-            .map(|n| n.max(0) as u32),
+        file_count: data.get("file_count").and_then(Value::as_i64).map(|n| n.max(0) as u32),
         create_time: get_opt_i64(data, "created_time"),
         // IR GroupFolderEntity: parent_folder_id/last_modified_time/creator_id。
         parent_folder_id: get_opt_str(data, "parent_folder_id"),

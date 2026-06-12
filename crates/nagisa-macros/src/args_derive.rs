@@ -12,10 +12,7 @@
 
 use proc_macro2::Span;
 use quote::{format_ident, quote};
-use syn::{
-    Data, DeriveInput, Error, Fields, GenericArgument, Ident, LitChar, LitStr, PathArguments, Token,
-    Type,
-};
+use syn::{Data, DeriveInput, Error, Fields, GenericArgument, Ident, LitChar, LitStr, PathArguments, Token, Type};
 
 use crate::nagisa_core_root;
 
@@ -90,12 +87,7 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
     let fields = match &input.data {
         Data::Struct(s) => match &s.fields {
             Fields::Named(named) => &named.named,
-            _ => {
-                return Err(Error::new_spanned(
-                    struct_ident,
-                    "#[derive(Args)] requires a struct with named fields",
-                ))
-            }
+            _ => return Err(Error::new_spanned(struct_ident, "#[derive(Args)] requires a struct with named fields")),
         },
         _ => return Err(Error::new_spanned(struct_ident, "#[derive(Args)] only supports structs")),
     };
@@ -153,9 +145,7 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
                 } else if p.is_ident("at_or_id") {
                     // `Uin` 字段:取一个 @ 提及元素,没有则取下一个文本词当号(兼容 "@123"/"123")。
                     is_at_or_id = true;
-                } else if let Some(k) =
-                    p.get_ident().and_then(|i| ElemKind::from_ident(&i.to_string()))
-                {
+                } else if let Some(k) = p.get_ident().and_then(|i| ElemKind::from_ident(&i.to_string())) {
                     elem = Some(k);
                 } else {
                     return Err(meta.error("unknown #[arg(..)] key"));
@@ -199,18 +189,7 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
             ArgRole::TextPositional
         };
 
-        parsed.push(ArgField {
-            ident,
-            ty,
-            role,
-            match_lits,
-            default,
-            raw: is_raw,
-            name,
-            desc,
-            short,
-            long_name,
-        });
+        parsed.push(ArgField { ident, ty, role, match_lits, default, raw: is_raw, name, desc, short, long_name });
     }
 
     // —— 扫描器:变量声明 + Word 匹配臂(选项/旗标)。——
@@ -437,14 +416,11 @@ pub(crate) fn expand_args(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
                     quote! { #nc::ArgKind::Element }
                 }
             };
-            let short_lit =
-                LitStr::new(&f.short.map(|c| c.to_string()).unwrap_or_default(), Span::call_site());
+            let short_lit = LitStr::new(&f.short.map(|c| c.to_string()).unwrap_or_default(), Span::call_site());
             let long_lit = LitStr::new(f.long_name.as_deref().unwrap_or(""), Span::call_site());
             // 必填 = 非 `Option` 且无 `default` 的位置 / 元素位置 / at_or_id;旗标 / 选项 / rest / 元素rest 恒非必填。
             let required = match &f.role {
-                ArgRole::Flag | ArgRole::TextOption | ArgRole::TextRest | ArgRole::ElementRest(_) => {
-                    false
-                }
+                ArgRole::Flag | ArgRole::TextOption | ArgRole::TextRest | ArgRole::ElementRest(_) => false,
                 _ => option_inner(&f.ty).is_none() && f.default.is_none(),
             };
             let default_lit = LitStr::new(f.default.as_deref().unwrap_or(""), Span::call_site());

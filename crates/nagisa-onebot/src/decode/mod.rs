@@ -10,8 +10,8 @@
 //! (段 / CQ 字符串解码)。
 use crate::wire::{value_as_string, RawEventJson, WireMessage, WireSegment};
 use nagisa_types::event::{
-    EmojiLike, FlashFilePhase, HonorKind, MemberDecreaseReason, NudgeDisplay,
-    OnlineFileDirection, RawEvent, ReactionKind,
+    EmojiLike, FlashFilePhase, HonorKind, MemberDecreaseReason, NudgeDisplay, OnlineFileDirection, RawEvent,
+    ReactionKind,
 };
 use nagisa_types::prelude::*;
 use nagisa_types::segment::{ContactKind, Forward, ForwardNode, MusicShare};
@@ -47,11 +47,7 @@ pub fn decode_event(ev: RawEventJson) -> Event {
 }
 
 fn raw_event(ev: &RawEventJson, fallback_kind: &str) -> Event {
-    let kind = ev
-        .post_type
-        .clone()
-        .or_else(|| ev.notice_type.clone())
-        .unwrap_or_else(|| fallback_kind.to_string());
+    let kind = ev.post_type.clone().or_else(|| ev.notice_type.clone()).unwrap_or_else(|| fallback_kind.to_string());
     Event::Raw(RawEvent { protocol: PROTO, kind, raw: event_raw_value(ev) })
 }
 
@@ -66,11 +62,7 @@ pub fn decode_event_batch(data: Value) -> Vec<Event> {
         // 裸对象:当成单条事件。
         other @ Value::Object(_) => vec![decode_event_value(other)],
         // 其余(string/number/bool)不可能是事件 → 浮现为 Raw。
-        other => vec![Event::Raw(RawEvent {
-            protocol: PROTO,
-            kind: "undecodable".to_string(),
-            raw: other,
-        })],
+        other => vec![Event::Raw(RawEvent { protocol: PROTO, kind: "undecodable".to_string(), raw: other })],
     }
 }
 
@@ -79,10 +71,6 @@ pub fn decode_event_batch(data: Value) -> Vec<Event> {
 pub fn decode_event_value(v: Value) -> Event {
     match serde_json::from_value::<RawEventJson>(v.clone()) {
         Ok(ev) => decode_event(ev),
-        Err(_) => Event::Raw(RawEvent {
-            protocol: PROTO,
-            kind: "undecodable".to_string(),
-            raw: v,
-        }),
+        Err(_) => Event::Raw(RawEvent { protocol: PROTO, kind: "undecodable".to_string(), raw: v }),
     }
 }

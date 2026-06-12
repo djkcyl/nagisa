@@ -24,10 +24,7 @@ pub(crate) fn encode_forward_node(n: &ForwardNode) -> Value {
     if let Some(t) = n.time {
         node_data.insert("time".into(), Value::from(t));
     }
-    Value::Object(obj(vec![
-        ("type", Value::String("node".into())),
-        ("data", Value::Object(node_data)),
-    ]))
+    Value::Object(obj(vec![("type", Value::String("node".into())), ("data", Value::Object(node_data))]))
 }
 
 /// 把 `ResourceSource` 序列化成 OneBot 的 `file` 字段形式:
@@ -79,12 +76,8 @@ pub fn encode_segments(segs: &[Segment]) -> Vec<WireSegment> {
 fn encode_segment(seg: &Segment) -> Option<WireSegment> {
     let ws = match seg {
         Segment::Text(t) => WireSegment::new("text", obj(vec![("text", Value::String(t.clone()))])),
-        Segment::Mention { user, .. } => {
-            WireSegment::new("at", obj(vec![("qq", Value::String(user.0.to_string()))]))
-        }
-        Segment::MentionAll => {
-            WireSegment::new("at", obj(vec![("qq", Value::String("all".into()))]))
-        }
+        Segment::Mention { user, .. } => WireSegment::new("at", obj(vec![("qq", Value::String(user.0.to_string()))])),
+        Segment::MentionAll => WireSegment::new("at", obj(vec![("qq", Value::String("all".into()))])),
         Segment::Face { id, large, result_id, chain_count, sub_type } => {
             let mut data = obj(vec![("id", Value::String(id.clone()))]);
             if *large {
@@ -107,10 +100,7 @@ fn encode_segment(seg: &Segment) -> Option<WireSegment> {
         }
         Segment::Reply { id, .. } => {
             // OneBot reply 按 message_id(合成整型)。
-            let v = id
-                .onebot_id
-                .map(|o| Value::String(o.to_string()))
-                .unwrap_or(Value::String(id.seq.to_string()));
+            let v = id.onebot_id.map(|o| Value::String(o.to_string())).unwrap_or(Value::String(id.seq.to_string()));
             let mut data = obj(vec![("id", v)]);
             // NapCat 在 reply 上额外接受 `seq`(message_seq);带真实 seq 时发它,使 NapCat 能精确
             // 定位引用。ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageReplySchema)。
@@ -163,10 +153,7 @@ fn encode_segment(seg: &Segment) -> Option<WireSegment> {
             // `file` 段。已知大小时发 file_size 以便接收方预分配;当我们持有的是 recv id(本地路径
             // 字符串)时,path 由它恢复。
             // ENDPOINT: LLOneBot/LLOneBot src/onebot11/types.ts (OB11MessageFile)。
-            let mut data = obj(vec![
-                ("file", Value::String(id.clone())),
-                ("name", Value::String(name.clone())),
-            ]);
+            let mut data = obj(vec![("file", Value::String(id.clone())), ("name", Value::String(name.clone()))]);
             if *size != 0 {
                 data.insert("file_size".into(), Value::String(size.to_string()));
             }
@@ -202,10 +189,7 @@ fn encode_segment(seg: &Segment) -> Option<WireSegment> {
         // Lagrange 的 PokeSegment 把 type/id/strength 作字符串携带;发 type+id,strength/name 存在时
         // 一并发。
         Segment::Poke { kind, id, strength, name } => {
-            let mut data = obj(vec![
-                ("type", Value::String(kind.to_string())),
-                ("id", Value::String(id.to_string())),
-            ]);
+            let mut data = obj(vec![("type", Value::String(kind.to_string())), ("id", Value::String(id.to_string()))]);
             if let Some(s) = strength {
                 data.insert("strength".into(), Value::String(s.to_string()));
             }
@@ -223,20 +207,14 @@ fn encode_segment(seg: &Segment) -> Option<WireSegment> {
             };
             WireSegment::new(
                 "contact",
-                obj(vec![
-                    ("type", Value::String(ty.into())),
-                    ("id", Value::String(id.0.to_string())),
-                ]),
+                obj(vec![("type", Value::String(ty.into())), ("id", Value::String(id.0.to_string()))]),
             )
         }
         // OFFICIAL: https://github.com/botuniverse/onebot-11/blob/master/message/segment.md (§位置)
         // Lagrange: https://github.com/LagrangeDev/Lagrange.Core/blob/master/Lagrange.OneBot/Message/Entity/LocationSegment.cs
         // Lagrange 把 lat/lon 序列化为字符串;title/content 可选。
         Segment::Location { lat, lon, title, content } => {
-            let mut data = obj(vec![
-                ("lat", Value::String(lat.to_string())),
-                ("lon", Value::String(lon.to_string())),
-            ]);
+            let mut data = obj(vec![("lat", Value::String(lat.to_string())), ("lon", Value::String(lon.to_string()))]);
             if let Some(t) = title {
                 data.insert("title".into(), Value::String(t.clone()));
             }
@@ -251,10 +229,7 @@ fn encode_segment(seg: &Segment) -> Option<WireSegment> {
         Segment::Music(share) => match share {
             MusicShare::Platform { ty, id } => WireSegment::new(
                 "music",
-                obj(vec![
-                    ("type", Value::String(ty.clone())),
-                    ("id", Value::String(id.clone())),
-                ]),
+                obj(vec![("type", Value::String(ty.clone())), ("id", Value::String(id.clone()))]),
             ),
             MusicShare::Custom { url, audio, title, content, image } => {
                 let mut data = obj(vec![
@@ -275,10 +250,7 @@ fn encode_segment(seg: &Segment) -> Option<WireSegment> {
         // OFFICIAL: https://github.com/botuniverse/onebot-11/blob/master/message/segment.md (§链接分享)
         // data {url, title[, content, image]}。
         Segment::Share { url, title, content, image } => {
-            let mut data = obj(vec![
-                ("url", Value::String(url.clone())),
-                ("title", Value::String(title.clone())),
-            ]);
+            let mut data = obj(vec![("url", Value::String(url.clone())), ("title", Value::String(title.clone()))]);
             if let Some(c) = content {
                 data.insert("content".into(), Value::String(c.clone()));
             }
@@ -316,16 +288,11 @@ fn encode_segment(seg: &Segment) -> Option<WireSegment> {
         // wire 形态已对照 Lagrange.OneBot/Message/Entity/*Segment.cs 核实(2026-06-04):
         //   keyboard → data {content:<KeyboardData JSON>};markdown → data {content:<string>};
         //   longmsg  → data {id:<res_id string>}。
-        Segment::Keyboard { content } => {
-            WireSegment::new("keyboard", obj(vec![("content", content.clone())]))
+        Segment::Keyboard { content } => WireSegment::new("keyboard", obj(vec![("content", content.clone())])),
+        Segment::Markdown { content } => {
+            WireSegment::new("markdown", obj(vec![("content", Value::String(content.clone()))]))
         }
-        Segment::Markdown { content } => WireSegment::new(
-            "markdown",
-            obj(vec![("content", Value::String(content.clone()))]),
-        ),
-        Segment::LongMsg { id } => {
-            WireSegment::new("longmsg", obj(vec![("id", Value::String(id.clone()))]))
-        }
+        Segment::LongMsg { id } => WireSegment::new("longmsg", obj(vec![("id", Value::String(id.clone()))])),
         // LLOneBot 私聊闪传文件卡片。与 decode 对称:
         //   data {title?, file_set_id, scene_type:<number>}。
         // ENDPOINT: LLOneBot/LLOneBot src/onebot11/types.ts (OB11MessageFlashFile)。
@@ -374,9 +341,7 @@ fn encode_segment(seg: &Segment) -> Option<WireSegment> {
 
 fn encode_forward(fwd: &Forward) -> WireSegment {
     match fwd {
-        Forward::Ref { id, .. } => {
-            WireSegment::new("forward", obj(vec![("id", Value::String(id.clone()))]))
-        }
+        Forward::Ref { id, .. } => WireSegment::new("forward", obj(vec![("id", Value::String(id.clone()))])),
         Forward::Nodes { nodes, summary, prompt, news, source, .. } => {
             // 节点编码与 `send_*_forward` 动作共用 `encode_forward_node`(裸数组形态在此包成
             // `{nodes:[..]}` + 可选 preview 字段)。
@@ -394,10 +359,8 @@ fn encode_forward(fwd: &Forward) -> WireSegment {
                 data.insert("prompt".into(), Value::String(p.clone()));
             }
             if !news.is_empty() {
-                let arr: Vec<Value> = news
-                    .iter()
-                    .map(|line| Value::Object(obj(vec![("text", Value::String(line.clone()))])))
-                    .collect();
+                let arr: Vec<Value> =
+                    news.iter().map(|line| Value::Object(obj(vec![("text", Value::String(line.clone()))]))).collect();
                 data.insert("news".into(), Value::Array(arr));
             }
             WireSegment::new("forward", data)

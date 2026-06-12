@@ -50,31 +50,23 @@ fn push_segment(out: &mut Vec<OutgoingSegment>, seg: &Segment) {
         Segment::MentionAll => out.push(OutgoingSegment::MentionAll {}),
         // Milky 出站 face 只有 face_id/is_large;super-face/FaceType 等是 OneBot 专属,
         // 在 Milky wire 上无对应(丢弃,不 panic)。
-        Segment::Face { id, large, .. } => out.push(OutgoingSegment::Face {
-            face_id: id.clone(),
-            is_large: *large,
-        }),
-        Segment::Reply { id, .. } => out.push(OutgoingSegment::Reply {
-            message_seq: id.seq,
-        }),
+        Segment::Face { id, large, .. } => out.push(OutgoingSegment::Face { face_id: id.clone(), is_large: *large }),
+        Segment::Reply { id, .. } => out.push(OutgoingSegment::Reply { message_seq: id.seq }),
         Segment::Image { res, sub_type, .. } => out.push(OutgoingSegment::Image {
             uri: media_uri(res),
             sub_type: image_sub_type(*sub_type),
             summary: res.summary.clone(),
         }),
         Segment::Record { res, .. } => out.push(OutgoingSegment::Record { uri: media_uri(res) }),
-        Segment::Video { res, thumb, .. } => out.push(OutgoingSegment::Video {
-            uri: media_uri(res),
-            thumb_uri: thumb.as_ref().map(source_to_uri),
-        }),
+        Segment::Video { res, thumb, .. } => {
+            out.push(OutgoingSegment::Video { uri: media_uri(res), thumb_uri: thumb.as_ref().map(source_to_uri) })
+        }
         Segment::Forward(fwd) => {
             if let Some(seg) = encode_forward(fwd) {
                 out.push(seg);
             }
         }
-        Segment::LightApp { payload, .. } => out.push(OutgoingSegment::LightApp {
-            json_payload: payload.clone(),
-        }),
+        Segment::LightApp { payload, .. } => out.push(OutgoingSegment::LightApp { json_payload: payload.clone() }),
         // File / MarketFace / Xml / Share / Keyboard / Markdown / LongMsg / Raw 等：
         // Milky 出站段只有 10 种（OutgoingSegment），这些统一 Segment 在发送侧无对应 wire 段，
         // 静默跳过（已尽力降级，绝不 panic）。
@@ -87,13 +79,7 @@ fn encode_forward(fwd: &Forward) -> Option<OutgoingSegment> {
     match fwd {
         // Milky forward 有 title/summary/prompt;gocq 专属的 `news`/`source` 预览字段在
         // Milky wire 上无对应(忽略,不 panic)。
-        Forward::Nodes {
-            nodes,
-            title,
-            summary,
-            prompt,
-            ..
-        } => {
+        Forward::Nodes { nodes, title, summary, prompt, .. } => {
             let messages = nodes.iter().map(encode_forward_node).collect();
             Some(OutgoingSegment::Forward {
                 messages,
@@ -108,11 +94,7 @@ fn encode_forward(fwd: &Forward) -> Option<OutgoingSegment> {
 }
 
 fn encode_forward_node(node: &ForwardNode) -> OutgoingForwardedMessage {
-    OutgoingForwardedMessage {
-        user_id: node.user.0,
-        sender_name: node.name.clone(),
-        segments: encode(&node.content),
-    }
+    OutgoingForwardedMessage { user_id: node.user.0, sender_name: node.name.clone(), segments: encode(&node.content) }
 }
 
 /// `&[Segment]` → Milky `OutgoingSegment` 列表。

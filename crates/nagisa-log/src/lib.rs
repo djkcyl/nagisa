@@ -37,9 +37,7 @@ mod names;
 mod observer;
 mod render;
 
-pub use bus::{
-    on_record, LogBus, LogBusLayer, LogBusReceiver, LogRecord, RESERVED_TARGET_PREFIX,
-};
+pub use bus::{on_record, LogBus, LogBusLayer, LogBusReceiver, LogRecord, RESERVED_TARGET_PREFIX};
 pub use init::{init, LogConfig, LogGuard};
 pub use messages::{MessageStore, StoredMessage};
 pub use names::NameStore;

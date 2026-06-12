@@ -10,12 +10,13 @@
 ## 门禁(改完必须全跑、真跑、看真实输出)
 
 ```sh
+cargo fmt                    # rustfmt.toml:行宽 120 + Max 启发式,护紧凑链式风格
 cargo build
 cargo clippy --all-targets -- -D warnings
 cargo doc --no-deps          # 必须零警告
 ```
 
-- **刻意零测试**:不要添加任何 `#[test]` / 集成测试,验证靠以上三件套 + 消费者构建。
+- **刻意零测试**:不要添加任何 `#[test]` / 集成测试,验证靠以上四件套 + 消费者构建。
 - 消费者联动:若本地有依赖本仓的下游消费者(path 依赖),公开面改动后对其 manifest 跑一次 `cargo build`,验证未破坏对接。
 
 ## 文档与注释约定

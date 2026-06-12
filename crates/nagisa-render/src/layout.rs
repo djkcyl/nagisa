@@ -14,8 +14,8 @@ use crate::font::FontHandle;
 use std::collections::HashMap;
 
 use crate::model::{
-    Align, Block, BlockImage, Cell, Color, Column, Columns, Document, FontRole, ImageBorder,
-    ImageSource, Inline, Length, List, ListKind, Progress, Table, TextStyle,
+    Align, Block, BlockImage, Cell, Color, Column, Columns, Document, FontRole, ImageBorder, ImageSource, Inline,
+    Length, List, ListKind, Progress, Table, TextStyle,
 };
 use crate::theme::{RenderOptions, Theme};
 
@@ -165,8 +165,7 @@ pub(crate) fn layout_document(doc: &Document, opts: &RenderOptions) -> Result<La
         return Err(Error::Layout("内边距必须为非负且有限".into()));
     }
     let th = &opts.theme;
-    if !th.base_size.is_finite() || th.base_size <= 0.0 || !th.line_height.is_finite() || th.line_height <= 0.0
-    {
+    if !th.base_size.is_finite() || th.base_size <= 0.0 || !th.line_height.is_finite() || th.line_height <= 0.0 {
         return Err(Error::Layout("基准字号 / 行高必须为正且有限".into()));
     }
     let content_w = ((opts.width - pad.left - pad.right) * sc).max(1.0);
@@ -299,18 +298,8 @@ impl LayoutCtx<'_> {
         y: f32,
         w: f32,
     ) -> f32 {
-        let (batch, decos, h) = shape_text(
-            &self.opts.fonts,
-            &self.opts.theme,
-            inlines,
-            align,
-            base_logical,
-            bold,
-            self.sc,
-            w,
-            x,
-            y,
-        );
+        let (batch, decos, h) =
+            shape_text(&self.opts.fonts, &self.opts.theme, inlines, align, base_logical, bold, self.sc, w, x, y);
         self.items.extend(decos);
         if !batch.glyphs.is_empty() {
             self.items.push(DisplayItem::Glyphs(batch));
@@ -329,11 +318,7 @@ impl LayoutCtx<'_> {
         // bg 与 border 都缺省 → 主题默认卡片样(浅底 + 细边)。
         let plain = d.bg.is_none() && d.border.is_none();
         let bg = if plain { Some(self.opts.theme.code_bg) } else { d.bg };
-        let border = if plain {
-            Some(ImageBorder { width: 1.5, color: self.opts.theme.border })
-        } else {
-            d.border
-        };
+        let border = if plain { Some(ImageBorder { width: 1.5, color: self.opts.theme.border }) } else { d.border };
 
         self.y += base * sc * 0.35;
         let top = self.y;
@@ -359,15 +344,7 @@ impl LayoutCtx<'_> {
             }));
         }
         if let Some(c) = bg {
-            decor.push(DisplayItem::Rect {
-                x,
-                y: top,
-                w,
-                h,
-                color: c,
-                radius,
-                layer: RectLayer::Under,
-            });
+            decor.push(DisplayItem::Rect { x, y: top, w, h, color: c, radius, layer: RectLayer::Under });
         }
         if let Some(b) = border {
             decor.push(DisplayItem::StrokeRect(StrokeItem {
@@ -461,11 +438,7 @@ impl LayoutCtx<'_> {
         // 语法上色:按语言切词,词上色、空当默认色;认不出的语言整块默认色。
         let mono = |seg: &str, color: Color| Inline::Text {
             text: seg.to_string(),
-            style: TextStyle {
-                font: FontRole::Mono,
-                color: Some(color),
-                ..TextStyle::default()
-            },
+            style: TextStyle { font: FontRole::Mono, color: Some(color), ..TextStyle::default() },
         };
         let pal = self.opts.theme.code_palette;
         let deft = self.opts.theme.code_text;
@@ -505,15 +478,7 @@ impl LayoutCtx<'_> {
         // 圆角矩形 + 方角矩形盖住其下半,两段同色不透明,接缝无痕。
         let bar_bg = mix(self.opts.theme.code_bg, self.opts.theme.text, 0.07);
         let bar_h = bar_h.min(bg_h);
-        self.items.push(DisplayItem::Rect {
-            x,
-            y: y_bg,
-            w,
-            h: bar_h,
-            color: bar_bg,
-            radius,
-            layer: RectLayer::Under,
-        });
+        self.items.push(DisplayItem::Rect { x, y: y_bg, w, h: bar_h, color: bar_bg, radius, layer: RectLayer::Under });
         let r = radius.min(bar_h / 2.0);
         self.items.push(DisplayItem::Rect {
             x,
@@ -688,14 +653,7 @@ impl LayoutCtx<'_> {
 
     /// 页眉/页脚的一行:主段按 `c.align` 排,行尾段(若有)右对齐同一行;未显式上色的
     /// span 染 `ink`。返回行高(两段取高者),不推进游标。
-    fn chrome_line(
-        &mut self,
-        c: &crate::theme::PageChrome,
-        ink: Color,
-        px: f32,
-        x: f32,
-        w: f32,
-    ) -> f32 {
+    fn chrome_line(&mut self, c: &crate::theme::PageChrome, ink: Color, px: f32, x: f32, w: f32) -> f32 {
         let fill = |src: &[Inline]| -> Vec<Inline> {
             src.iter()
                 .cloned()
@@ -723,15 +681,7 @@ impl LayoutCtx<'_> {
 
     /// 图面装饰层:边框(描边随圆角)/ 角标(圆角底板 + 文字)/ 水印(半透明文字)。
     /// 全部叠在图面坐标系内,不动游标、不改布局尺寸。`radius` 已是物理像素。
-    fn image_overlay(
-        &mut self,
-        decor: &crate::model::ImageDecor,
-        ix: f32,
-        iy: f32,
-        dw: f32,
-        dh: f32,
-        radius: f32,
-    ) {
+    fn image_overlay(&mut self, decor: &crate::model::ImageDecor, ix: f32, iy: f32, dw: f32, dh: f32, radius: f32) {
         let (base, sc) = (self.opts.theme.base_size, self.sc);
         let line_mult = self.opts.theme.line_height;
 
@@ -846,13 +796,7 @@ impl LayoutCtx<'_> {
         y_top: f32,
         w: f32,
     ) -> (Vec<DisplayItem>, Vec<image::RgbaImage>, f32) {
-        let mut sub = LayoutCtx {
-            opts: self.opts,
-            sc: self.sc,
-            items: Vec::new(),
-            images: Vec::new(),
-            y: y_top,
-        };
+        let mut sub = LayoutCtx { opts: self.opts, sc: self.sc, items: Vec::new(), images: Vec::new(), y: y_top };
         for (i, b) in blocks.iter().enumerate() {
             sub.block(b, x, w, i == 0);
         }
@@ -1076,8 +1020,7 @@ impl LayoutCtx<'_> {
         let measure = |cells: &[Cell], bold: bool, natural: &mut [f32]| {
             for (k, cell) in cells.iter().enumerate() {
                 if k < ncols {
-                    let nw =
-                        measure_natural(&self.opts.fonts, &self.opts.theme, &cell.inlines, base, bold, sc);
+                    let nw = measure_natural(&self.opts.fonts, &self.opts.theme, &cell.inlines, base, bold, sc);
                     natural[k] = natural[k].max(nw);
                 }
             }
@@ -1581,12 +1524,7 @@ fn measure_natural(
 
 /// 求覆盖件在图面内的停靠坐标:`frame` 是图面矩形 `(x, y, w, h)`,`size` 是覆盖件
 /// `(宽, 高)`,`m` 是离边距。图面放不下时夹回左上,贴边呈现。
-fn anchor_pos(
-    a: crate::model::Anchor,
-    frame: (f32, f32, f32, f32),
-    size: (f32, f32),
-    m: f32,
-) -> (f32, f32) {
+fn anchor_pos(a: crate::model::Anchor, frame: (f32, f32, f32, f32), size: (f32, f32), m: f32) -> (f32, f32) {
     use crate::model::Anchor;
     let (ix, iy, dw, dh) = frame;
     let (w, h) = size;

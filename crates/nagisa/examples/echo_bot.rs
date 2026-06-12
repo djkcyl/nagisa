@@ -19,11 +19,7 @@ async fn echo(reply: Reply, args: ArgText) -> HandlerResult {
 }
 
 // 2. 一个携带插件元数据(name/description)的命令。
-#[command(
-    "ping",
-    name = "ping",
-    description = "health check"
-)]
+#[command("ping", name = "ping", description = "health check")]
 async fn ping(reply: Reply) -> HandlerResult {
     reply.text("pong").await?;
     Ok(())
@@ -63,9 +59,7 @@ struct Transfer {
 #[command("转账", "transfer", mention_me)]
 async fn transfer(reply: Reply, args: Args<Transfer>) -> HandlerResult {
     let Transfer { target, amount, force } = args.0;
-    reply
-        .text(format!("transfer {amount} to {} (force={force})", target.0))
-        .await?;
+    reply.text(format!("transfer {amount} to {} (force={force})", target.0)).await?;
     Ok(())
 }
 
@@ -78,17 +72,15 @@ enum Switch {
 
 #[derive(Args)]
 struct RepeatCfg {
-    mode: Switch,             // on|off(大小写不敏感)
+    mode: Switch, // on|off(大小写不敏感)
     #[arg(image)]
-    sample: Option<Media>,    // 可选图片;缺省则为 None
+    sample: Option<Media>, // 可选图片;缺省则为 None
 }
 
 #[command("repeat", mention_me)]
 async fn repeat(reply: Reply, args: Args<RepeatCfg>) -> HandlerResult {
     let RepeatCfg { mode, sample } = args.0;
-    reply
-        .text(format!("repeat {mode:?}, has_image={}", sample.is_some()))
-        .await?;
+    reply.text(format!("repeat {mode:?}, has_image={}", sample.is_some())).await?;
     Ok(())
 }
 
@@ -96,13 +88,8 @@ async fn repeat(reply: Reply, args: Args<RepeatCfg>) -> HandlerResult {
 async fn main() -> Result<()> {
     let shutdown = ctrl_c_shutdown();
     App::new()
-        .data(Counter {
-            hits: AtomicU64::new(0),
-        })
+        .data(Counter { hits: AtomicU64::new(0) })
         .on(group_only)
-        .run_onebot(
-            OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"),
-            shutdown,
-        )
+        .run_onebot(OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"), shutdown)
         .await
 }

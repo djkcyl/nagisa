@@ -73,11 +73,7 @@ impl GroupRef {
     pub async fn set_avatar(&self, src: ResourceSource) -> Result<()> {
         self.bot.set_group_avatar(self.group, src).await
     }
-    pub async fn send_announcement(
-        &self,
-        content: &str,
-        image: Option<ResourceSource>,
-    ) -> Result<String> {
+    pub async fn send_announcement(&self, content: &str, image: Option<ResourceSource>) -> Result<String> {
         self.bot.send_group_announcement(self.group, content, image).await
     }
     pub async fn announcements(&self) -> Result<Vec<Announcement>> {

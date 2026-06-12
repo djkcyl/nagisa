@@ -173,12 +173,7 @@ pub struct Cooldown {
 impl Cooldown {
     /// 新建一条冷却：默认 `UserGlobal`、`max_exec=1`、静默。
     pub fn new(secs: u64) -> Self {
-        Self {
-            interval: Duration::from_secs(secs),
-            scope: CooldownScope::UserGlobal,
-            max_exec: 1,
-            bypass: None,
-        }
+        Self { interval: Duration::from_secs(secs), scope: CooldownScope::UserGlobal, max_exec: 1, bypass: None }
     }
 
     /// 改为按对端会话（群/好友）。
@@ -251,9 +246,7 @@ fn key_for(ctx: &Ctx, scope: CooldownScope, trigger: &TriggerId) -> Option<CdKey
 /// → 放行），并避开 `State` 的 `async`。请勿“简化”回 `State`，否则会把缺存储变成错误。
 fn store(ctx: &Ctx) -> Option<Arc<CooldownStore>> {
     use std::any::TypeId;
-    ctx.state()
-        .get(&TypeId::of::<CooldownStore>())
-        .and_then(|a| Arc::clone(a).downcast::<CooldownStore>().ok())
+    ctx.state().get(&TypeId::of::<CooldownStore>()).and_then(|a| Arc::clone(a).downcast::<CooldownStore>().ok())
 }
 
 /// 有状态的冷却 [`Check`]：先看 `bypass`，再窥探窗口并盖章；仅在窗口到点（满 `max_exec`）时否决。

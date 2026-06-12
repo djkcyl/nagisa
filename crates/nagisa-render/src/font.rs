@@ -107,10 +107,8 @@ impl GlyphRaster<'_> {
 /// 共享句柄连续渲染 / 同文档多字号时按「上一次的字号」栅格化——别打开)。
 fn raster(cx: &mut ScaleContext, gf: &GlyphFont, glyph: u16) -> Option<GlyphImage> {
     let font_ref = swash::FontRef::from_index(gf.font.data.as_ref(), gf.font.index as usize)?;
-    let mut scaler =
-        cx.builder(font_ref).size(gf.size).hint(false).normalized_coords(&gf.coords).build();
-    let mut render =
-        Render::new(&[Source::ColorOutline(0), Source::ColorBitmap(StrikeWith::BestFit), Source::Outline]);
+    let mut scaler = cx.builder(font_ref).size(gf.size).hint(false).normalized_coords(&gf.coords).build();
+    let mut render = Render::new(&[Source::ColorOutline(0), Source::ColorBitmap(StrikeWith::BestFit), Source::Outline]);
     render.format(Format::Alpha);
     if let Some(deg) = gf.skew {
         render.transform(Some(Transform::skew(Angle::from_degrees(deg), Angle::ZERO)));
@@ -166,10 +164,7 @@ impl FontHandle {
     ///
     /// 锁中毒(某次渲染在持锁时 panic)后仍照常借出内层数据——上下文没有跨调用不变量,
     /// 一次坏输入不应永久毒死整条渲染链(长驻 bot 致命)。
-    pub(crate) fn with_layout<R>(
-        &self,
-        f: impl FnOnce(&mut FontContext, &mut LayoutContext<Ink>) -> R,
-    ) -> R {
+    pub(crate) fn with_layout<R>(&self, f: impl FnOnce(&mut FontContext, &mut LayoutContext<Ink>) -> R) -> R {
         let mut fonts = self.0.fonts.lock().unwrap_or_else(|e| e.into_inner());
         let mut layouts = self.0.layouts.lock().unwrap_or_else(|e| e.into_inner());
         f(&mut fonts, &mut layouts)
@@ -228,8 +223,7 @@ impl FontStackBuilder {
 
     /// 构建字体句柄。字体栈为空则报 [`Error::FontLoad`]。
     pub fn build(self) -> Result<FontHandle> {
-        let mut collection =
-            Collection::new(CollectionOptions { shared: false, system_fonts: self.system });
+        let mut collection = Collection::new(CollectionOptions { shared: false, system_fonts: self.system });
         let mut registered = false;
         let mut register = |collection: &mut Collection, raw: Vec<u8>| {
             registered |= !collection.register_fonts(Blob::from(raw), None).is_empty();
@@ -277,8 +271,8 @@ impl FontStackBuilder {
 /// 解压一只 zstd 压缩的内置字体。
 fn unzstd(data: &[u8]) -> Result<Vec<u8>> {
     use std::io::Read;
-    let mut dec = ruzstd::decoding::StreamingDecoder::new(data)
-        .map_err(|e| Error::FontLoad(format!("内置字体解压失败:{e}")))?;
+    let mut dec =
+        ruzstd::decoding::StreamingDecoder::new(data).map_err(|e| Error::FontLoad(format!("内置字体解压失败:{e}")))?;
     let mut out = Vec::new();
     dec.read_to_end(&mut out).map_err(|e| Error::FontLoad(format!("内置字体解压失败:{e}")))?;
     Ok(out)

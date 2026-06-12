@@ -92,12 +92,7 @@ pub trait ActionInvoker: Send + Sync + 'static {
         Err(unsupported("get_group_list"))
     }
     /// 群成员信息。OneBot `get_group_member_info`、Milky `get_group_member_info`。
-    async fn get_group_member_info(
-        &self,
-        _group: Uin,
-        _user: Uin,
-        _no_cache: bool,
-    ) -> Result<MemberInfo> {
+    async fn get_group_member_info(&self, _group: Uin, _user: Uin, _no_cache: bool) -> Result<MemberInfo> {
         Err(unsupported("get_group_member_info"))
     }
     /// 群成员列表。OneBot `get_group_member_list`、Milky `get_group_member_list`。
@@ -137,12 +132,7 @@ pub trait ActionInvoker: Send + Sync + 'static {
     /// Milky `accept_friend_request`/`reject_friend_request` /
     /// `accept_group_request`/`reject_group_request` /
     /// `accept_group_invitation`/`reject_group_invitation`（按 token 内变体派发）。
-    async fn handle_request(
-        &self,
-        _token: &RequestToken,
-        _approve: bool,
-        _reason: Option<&str>,
-    ) -> Result<()> {
+    async fn handle_request(&self, _token: &RequestToken, _approve: bool, _reason: Option<&str>) -> Result<()> {
         Err(unsupported("handle_request"))
     }
     /// 群消息表情回应（贴/撤表情）。OneBot `set_group_reaction`、Milky `send_group_message_reaction`。
@@ -176,12 +166,7 @@ pub trait ActionInvoker: Send + Sync + 'static {
     }
     /// 上传私聊(好友)文件,返回服务端分配的文件 id。
     /// OneBot `upload_private_file`、Milky `upload_private_file`。
-    async fn upload_private_file(
-        &self,
-        _user: Uin,
-        _src: ResourceSource,
-        _name: &str,
-    ) -> Result<String> {
+    async fn upload_private_file(&self, _user: Uin, _src: ResourceSource, _name: &str) -> Result<String> {
         Err(unsupported("upload_private_file"))
     }
     /// 任意用户档案(含陌生人)。OneBot `get_stranger_info` / Milky `get_user_profile`。
@@ -297,12 +282,7 @@ pub trait ActionInvoker: Send + Sync + 'static {
         Err(unsupported("get_group_files"))
     }
     /// 私聊文件下载直链。OneBot `get_private_file_url` / Milky `get_private_file_download_url`。
-    async fn get_private_file_download_url(
-        &self,
-        _user: Uin,
-        _file_id: &str,
-        _hash: Option<&str>,
-    ) -> Result<String> {
+    async fn get_private_file_download_url(&self, _user: Uin, _file_id: &str, _hash: Option<&str>) -> Result<String> {
         Err(unsupported("get_private_file_download_url"))
     }
     /// 新建群文件夹,返回 folder id。OneBot `create_group_file_folder` / Milky `create_group_folder`。
@@ -310,12 +290,7 @@ pub trait ActionInvoker: Send + Sync + 'static {
         Err(unsupported("create_group_folder"))
     }
     /// 重命名群文件夹。OneBot `rename_group_file_folder` / Milky `rename_group_folder`。
-    async fn rename_group_folder(
-        &self,
-        _group: Uin,
-        _folder_id: &str,
-        _new_name: &str,
-    ) -> Result<()> {
+    async fn rename_group_folder(&self, _group: Uin, _folder_id: &str, _new_name: &str) -> Result<()> {
         Err(unsupported("rename_group_folder"))
     }
     /// 删除群文件夹。OneBot `delete_group_folder` / Milky `delete_group_folder`。

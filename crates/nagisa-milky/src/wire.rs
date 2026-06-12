@@ -234,18 +234,10 @@ impl<'de> Deserialize<'de> for IncomingMessage {
         let value = Value::deserialize(deserializer)?;
         let scene = value.get("message_scene").and_then(Value::as_str);
         match scene {
-            Some("friend") => serde_json::from_value(value)
-                .map(IncomingMessage::Friend)
-                .map_err(D::Error::custom),
-            Some("group") => serde_json::from_value(value)
-                .map(IncomingMessage::Group)
-                .map_err(D::Error::custom),
-            Some("temp") => serde_json::from_value(value)
-                .map(IncomingMessage::Temp)
-                .map_err(D::Error::custom),
-            other => Err(D::Error::custom(format!(
-                "unknown or missing message_scene: {other:?}"
-            ))),
+            Some("friend") => serde_json::from_value(value).map(IncomingMessage::Friend).map_err(D::Error::custom),
+            Some("group") => serde_json::from_value(value).map(IncomingMessage::Group).map_err(D::Error::custom),
+            Some("temp") => serde_json::from_value(value).map(IncomingMessage::Temp).map_err(D::Error::custom),
+            other => Err(D::Error::custom(format!("unknown or missing message_scene: {other:?}"))),
         }
     }
 }
@@ -439,22 +431,29 @@ enum KnownIncomingSegment {
 
 /// 已知变体 type 字符串集合。
 const KNOWN_SEGMENT_TYPES: &[&str] = &[
-    "text", "mention", "mention_all", "face", "reply", "image", "record", "video", "file",
-    "forward", "market_face", "light_app", "xml",
+    "text",
+    "mention",
+    "mention_all",
+    "face",
+    "reply",
+    "image",
+    "record",
+    "video",
+    "file",
+    "forward",
+    "market_face",
+    "light_app",
+    "xml",
 ];
 
 impl<'de> Deserialize<'de> for IncomingSegment {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::Error as _;
         let raw = Value::deserialize(deserializer)?;
-        let type_str = raw
-            .get("type")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
+        let type_str = raw.get("type").and_then(Value::as_str).unwrap_or_default();
 
         if KNOWN_SEGMENT_TYPES.contains(&type_str) {
-            let known = serde_json::from_value::<KnownIncomingSegment>(raw)
-                .map_err(D::Error::custom)?;
+            let known = serde_json::from_value::<KnownIncomingSegment>(raw).map_err(D::Error::custom)?;
             return Ok(known.into());
         }
 
@@ -469,112 +468,34 @@ impl From<KnownIncomingSegment> for IncomingSegment {
     fn from(k: KnownIncomingSegment) -> Self {
         match k {
             KnownIncomingSegment::Text { text } => IncomingSegment::Text { text },
-            KnownIncomingSegment::Mention { user_id, name } => {
-                IncomingSegment::Mention { user_id, name }
-            }
+            KnownIncomingSegment::Mention { user_id, name } => IncomingSegment::Mention { user_id, name },
             KnownIncomingSegment::MentionAll {} => IncomingSegment::MentionAll {},
-            KnownIncomingSegment::Face { face_id, is_large } => {
-                IncomingSegment::Face { face_id, is_large }
+            KnownIncomingSegment::Face { face_id, is_large } => IncomingSegment::Face { face_id, is_large },
+            KnownIncomingSegment::Reply { message_seq, sender_id, sender_name, time, segments } => {
+                IncomingSegment::Reply { message_seq, sender_id, sender_name, time, segments }
             }
-            KnownIncomingSegment::Reply {
-                message_seq,
-                sender_id,
-                sender_name,
-                time,
-                segments,
-            } => IncomingSegment::Reply {
-                message_seq,
-                sender_id,
-                sender_name,
-                time,
-                segments,
-            },
-            KnownIncomingSegment::Image {
-                resource_id,
-                temp_url,
-                width,
-                height,
-                summary,
-                sub_type,
-            } => IncomingSegment::Image {
-                resource_id,
-                temp_url,
-                width,
-                height,
-                summary,
-                sub_type,
-            },
-            KnownIncomingSegment::Record {
-                resource_id,
-                temp_url,
-                duration,
-            } => IncomingSegment::Record {
-                resource_id,
-                temp_url,
-                duration,
-            },
-            KnownIncomingSegment::Video {
-                resource_id,
-                temp_url,
-                width,
-                height,
-                duration,
-            } => IncomingSegment::Video {
-                resource_id,
-                temp_url,
-                width,
-                height,
-                duration,
-            },
-            KnownIncomingSegment::File {
-                file_id,
-                file_name,
-                file_size,
-                file_hash,
-            } => IncomingSegment::File {
-                file_id,
-                file_name,
-                file_size,
-                file_hash,
-            },
-            KnownIncomingSegment::Forward {
-                forward_id,
-                title,
-                preview,
-                summary,
-            } => IncomingSegment::Forward {
-                forward_id,
-                title,
-                preview,
-                summary,
-            },
-            KnownIncomingSegment::MarketFace {
-                emoji_package_id,
-                emoji_id,
-                key,
-                summary,
-                url,
-            } => IncomingSegment::MarketFace {
-                emoji_package_id,
-                emoji_id,
-                key,
-                summary,
-                url,
-            },
-            KnownIncomingSegment::LightApp {
-                app_name,
-                json_payload,
-            } => IncomingSegment::LightApp {
-                app_name,
-                json_payload,
-            },
-            KnownIncomingSegment::Xml {
-                service_id,
-                xml_payload,
-            } => IncomingSegment::Xml {
-                service_id,
-                xml_payload,
-            },
+            KnownIncomingSegment::Image { resource_id, temp_url, width, height, summary, sub_type } => {
+                IncomingSegment::Image { resource_id, temp_url, width, height, summary, sub_type }
+            }
+            KnownIncomingSegment::Record { resource_id, temp_url, duration } => {
+                IncomingSegment::Record { resource_id, temp_url, duration }
+            }
+            KnownIncomingSegment::Video { resource_id, temp_url, width, height, duration } => {
+                IncomingSegment::Video { resource_id, temp_url, width, height, duration }
+            }
+            KnownIncomingSegment::File { file_id, file_name, file_size, file_hash } => {
+                IncomingSegment::File { file_id, file_name, file_size, file_hash }
+            }
+            KnownIncomingSegment::Forward { forward_id, title, preview, summary } => {
+                IncomingSegment::Forward { forward_id, title, preview, summary }
+            }
+            KnownIncomingSegment::MarketFace { emoji_package_id, emoji_id, key, summary, url } => {
+                IncomingSegment::MarketFace { emoji_package_id, emoji_id, key, summary, url }
+            }
+            KnownIncomingSegment::LightApp { app_name, json_payload } => {
+                IncomingSegment::LightApp { app_name, json_payload }
+            }
+            KnownIncomingSegment::Xml { service_id, xml_payload } => IncomingSegment::Xml { service_id, xml_payload },
         }
     }
 }

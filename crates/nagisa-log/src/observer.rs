@@ -197,9 +197,7 @@ impl EventLog {
     /// 每个事件：先就地学名字（同步）；若开关关 / 种类被过滤 → 不渲染；否则把
     /// [`render_line`] 出的可读行以配置级别、`target = "nagisa::event"` 发出；最后（若开启名字
     /// 解析）spawn 一个 detached 后台任务经 `Bot` 回填群名/成员名（绝不阻塞当前事件或命令）。
-    pub fn observer(
-        &self,
-    ) -> impl Fn(Arc<Event>, Bot) -> std::future::Ready<()> + Clone + Send + Sync + 'static {
+    pub fn observer(&self) -> impl Fn(Arc<Event>, Bot) -> std::future::Ready<()> + Clone + Send + Sync + 'static {
         // 安装出站消息日志器(进程级、只装一次):把 bot 发出的消息合成一条 `is_self` 的
         // `MessageEvent`,走与入站**完全相同**的 [`log_event`](同一记录/渲染/名字解析/开关/级别)。
         // 故出站与入站共用同一套渲染(`render_line`)、同一 `NameStore`、同一 `nagisa::event` 流。

@@ -246,10 +246,9 @@ impl NameStore {
             let mut count = 0usize;
             if let Some(imgs) = json.get("imgs").and_then(|v| v.as_array()) {
                 for img in imgs {
-                    if let (Some(id), Some(name)) = (
-                        img.get("id").and_then(|v| v.as_str()),
-                        img.get("name").and_then(|v| v.as_str()),
-                    ) {
+                    if let (Some(id), Some(name)) =
+                        (img.get("id").and_then(|v| v.as_str()), img.get("name").and_then(|v| v.as_str()))
+                    {
                         store.put_market_face(package_id, id, name);
                         count += 1;
                     }

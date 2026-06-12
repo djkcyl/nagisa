@@ -30,12 +30,7 @@ fn kind_str(e: &Event) -> &'static str {
 ///
 /// 每个事件构造一个新 `Arc<Ctx>`（共享 `router.state()` 与 `bot`），在独立的
 /// `tokio::spawn` 任务中并发处理；任务边界隔离 panic，慢 handler 不会阻塞循环。
-pub async fn run_dispatch(
-    router: Arc<Router>,
-    bot: Bot,
-    mut events: mpsc::Receiver<Event>,
-    shutdown: ShutdownToken,
-) {
+pub async fn run_dispatch(router: Arc<Router>, bot: Bot, mut events: mpsc::Receiver<Event>, shutdown: ShutdownToken) {
     let state = router.state();
     let mut set: JoinSet<()> = JoinSet::new();
 

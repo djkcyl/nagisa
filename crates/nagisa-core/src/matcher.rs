@@ -68,21 +68,11 @@ impl SlotSpec {
     /// 命名的单捕获必填槽(`Flank::Whole`)。`src` 须恰含一个捕获组(或由 `Matcher::slots`
     /// 在无捕获组时自动外包一层)。
     pub fn named(name: impl Into<Cow<'static, str>>, src: impl Into<String>) -> Self {
-        SlotSpec {
-            names: vec![name.into()],
-            src: src.into(),
-            optional: false,
-            flank: Flank::Whole,
-        }
+        SlotSpec { names: vec![name.into()], src: src.into(), optional: false, flank: Flank::Whole }
     }
     /// 命名的单捕获可选槽(`(?:..)?` ⇒ `Option<T>`)。
     pub fn optional(name: impl Into<Cow<'static, str>>, src: impl Into<String>) -> Self {
-        SlotSpec {
-            names: vec![name.into()],
-            src: src.into(),
-            optional: true,
-            flank: Flank::Whole,
-        }
+        SlotSpec { names: vec![name.into()], src: src.into(), optional: true, flank: Flank::Whole }
     }
     /// 字面量头(无捕获组、不进 `named_captures`);`src` 应已转义。
     pub fn literal(src: impl Into<String>) -> Self {
@@ -133,20 +123,11 @@ impl Matcher {
         } else {
             // 转义字面量;多词命令(如 "git add")里的空白放宽成 `\s+`,容忍多空格。
             // (regex::escape 不转义空格,故替换的是字面空格。)
-            alts.iter()
-                .map(|a| regex::escape(a).replace(' ', r"\s+"))
-                .collect::<Vec<_>>()
-                .join("|")
+            alts.iter().map(|a| regex::escape(a).replace(' ', r"\s+")).collect::<Vec<_>>().join("|")
         };
         let pat = format!(r"^(?:{body})(?:\s|$)");
         let re = regex::Regex::new(&pat).expect("escaped command literals form a valid regex");
-        Self {
-            patterns: vec![re],
-            mention_me: false,
-            to_me_only: false,
-            usage: None,
-            slot_names: Vec::new(),
-        }
+        Self { patterns: vec![re], mention_me: false, to_me_only: false, usage: None, slot_names: Vec::new() }
     }
 
     /// 原始正则触发器;编译失败返回 `regex::Error`。捕获组进 `ParsedCommand.captures`。
@@ -233,13 +214,7 @@ impl Matcher {
         }
 
         let re = regex::Regex::new(&pat)?;
-        Ok(Self {
-            patterns: vec![re],
-            mention_me: false,
-            to_me_only: false,
-            usage: None,
-            slot_names,
-        })
+        Ok(Self { patterns: vec![re], mention_me: false, to_me_only: false, usage: None, slot_names })
     }
 
     /// 附带显式用法串(`#[command(usage="…")]`)：命中后随 `ParsedCommand.usage` 携带,
@@ -275,10 +250,9 @@ impl Matcher {
         // —— MentionMe 预处理:剥前导 @self,记录 to_me。——
         // 段层面保留其它前导段;文本层面再剥前导 `/`。
         let mut to_me = msg.peer.scene != Scene::Group; // 私聊天然 to_me
-        // 一个前导 Reply 段(「回复 + @bot + 命令」很常见):保留在 args 里,但不能挡住
-        // @self 检测——故 @self 从 Reply 之后开始看。
-        let reply_prefix =
-            usize::from(matches!(msg.content.first(), Some(Segment::Reply { .. })));
+                                                        // 一个前导 Reply 段(「回复 + @bot + 命令」很常见):保留在 args 里,但不能挡住
+                                                        // @self 检测——故 @self 从 Reply 之后开始看。
+        let reply_prefix = usize::from(matches!(msg.content.first(), Some(Segment::Reply { .. })));
         let segs: std::borrow::Cow<[Segment]> = if self.mention_me {
             // 剥≤2个前导 @self,Reply 前缀保留。
             let mut stripped = 0usize;
@@ -357,11 +331,8 @@ impl Matcher {
                     }
                     None => match_text.to_string(),
                 };
-                let groups: Vec<String> = caps
-                    .iter()
-                    .skip(1)
-                    .map(|g| g.map(|m| m.as_str().to_string()).unwrap_or_default())
-                    .collect();
+                let groups: Vec<String> =
+                    caps.iter().skip(1).map(|g| g.map(|m| m.as_str().to_string()).unwrap_or_default()).collect();
                 // 命名槽(`Matcher::slots`):据 slot_names 把每个命名组(Some(text) | 缺省 None)
                 // 收进 named_captures。`command`/`regex` 的 slot_names 为空 ⇒ 此 map 为空。
                 let mut named_captures: HashMap<Cow<'static, str>, Option<String>> =

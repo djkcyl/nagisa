@@ -251,10 +251,7 @@ fn toposort(services: &[Arc<dyn Service>]) -> Result<Vec<usize>> {
     for (i, svc) in services.iter().enumerate() {
         for dep in svc.deps() {
             let Some(&d) = index.get(dep) else {
-                return Err(internal_err(format!(
-                    "service `{}` depends on unknown service `{dep}`",
-                    svc.id()
-                )));
+                return Err(internal_err(format!("service `{}` depends on unknown service `{dep}`", svc.id())));
             };
             dependents[d].push(i);
             indegree[i] += 1;
@@ -262,8 +259,7 @@ fn toposort(services: &[Arc<dyn Service>]) -> Result<Vec<usize>> {
     }
 
     // 入度为 0 的入队（按注册下标顺序，给出确定性输出）。
-    let mut queue: std::collections::VecDeque<usize> =
-        (0..n).filter(|&i| indegree[i] == 0).collect();
+    let mut queue: std::collections::VecDeque<usize> = (0..n).filter(|&i| indegree[i] == 0).collect();
     let mut order: Vec<usize> = Vec::with_capacity(n);
     while let Some(node) = queue.pop_front() {
         order.push(node);
@@ -277,8 +273,7 @@ fn toposort(services: &[Arc<dyn Service>]) -> Result<Vec<usize>> {
 
     if order.len() != n {
         // 未能排完 → 剩余节点构成至少一个环。
-        let cyclic: Vec<&str> =
-            (0..n).filter(|&i| indegree[i] > 0).map(|i| services[i].id()).collect();
+        let cyclic: Vec<&str> = (0..n).filter(|&i| indegree[i] > 0).map(|i| services[i].id()).collect();
         return Err(internal_err(format!("dependency cycle among services: {cyclic:?}")));
     }
 

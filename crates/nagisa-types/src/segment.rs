@@ -30,13 +30,7 @@ pub enum MusicShare {
     /// 平台预设:`ty` 为平台标识(qq/163/kugou/migu/kuwo),`id` 为歌曲 id。
     Platform { ty: String, id: String },
     /// 自定义分享卡片。
-    Custom {
-        url: String,
-        audio: String,
-        title: String,
-        content: Option<String>,
-        image: Option<String>,
-    },
+    Custom { url: String, audio: String, title: String, content: Option<String>, image: Option<String> },
 }
 
 /// 合并转发：接收为引用 + 预览元信息；发送为内联节点。
@@ -97,7 +91,10 @@ pub struct ForwardNode {
 #[non_exhaustive]
 pub enum Segment {
     Text(String),
-    Mention { user: Uin, name: Option<String> },
+    Mention {
+        user: Uin,
+        name: Option<String>,
+    },
     MentionAll,
     /// QQ 表情段。`id`/`large` 为 OneBot v11 标准字段。
     /// `result_id`/`chain_count` 为 NapCat「超级表情」(super-face) 扩展（连发动画表情，
@@ -107,63 +104,134 @@ pub enum Segment {
     /// LLOneBot `OB11MessageFace` data `sub_type`(number, FaceType)。
     /// ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageFaceSchema)
     ///   + LLOneBot/LLOneBot src/onebot11/types.ts (OB11MessageFace)。
-    Face { id: String, large: bool, result_id: Option<String>, chain_count: Option<i32>, sub_type: Option<i32> },
-    Reply { id: MessageId, sender: Option<Uin>, time: Option<i64>, quoted: Vec<Segment> },
-    Image { res: Media, sub_type: ImageSubType, hints: MediaSendHints },
-    Record { res: Media, magic: Option<i32>, hints: MediaSendHints },
+    Face {
+        id: String,
+        large: bool,
+        result_id: Option<String>,
+        chain_count: Option<i32>,
+        sub_type: Option<i32>,
+    },
+    Reply {
+        id: MessageId,
+        sender: Option<Uin>,
+        time: Option<i64>,
+        quoted: Vec<Segment>,
+    },
+    Image {
+        res: Media,
+        sub_type: ImageSubType,
+        hints: MediaSendHints,
+    },
+    Record {
+        res: Media,
+        magic: Option<i32>,
+        hints: MediaSendHints,
+    },
     /// 视频段。`thumb`（封面缩略图）为**跨协议非对称（固有限制）**字段：**标准 OneBot v11
     /// 的 video 段没有 thumb wire 字段**，故纯 v11 端 encode 时必然丢弃 `thumb`；nagisa 仍会
     /// 在 encode 时写出 `thumb` 键（LLOneBot/go-cqhttp 扩展接受它，标准端忽略多发键，无害——
     /// 见 `nagisa-onebot/src/encode.rs`），但**标准 v11 解码侧 `thumb` 恒为 `None`**。Milky 有
     /// 对称的 `thumb_uri` wire 字段，能完整收发。即：`thumb` 在标准 OneBot v11 下是只写不读
     /// 的有损字段，这是 v11 wire 的天然缺口，非编解码缺陷。
-    Video { res: Media, hints: MediaSendHints, thumb: Option<ResourceSource> },
-    File { id: String, name: String, size: u64, hash: Option<String>, url: Option<String> },
+    Video {
+        res: Media,
+        hints: MediaSendHints,
+        thumb: Option<ResourceSource>,
+    },
+    File {
+        id: String,
+        name: String,
+        size: u64,
+        hash: Option<String>,
+        url: Option<String>,
+    },
     Forward(Forward),
-    MarketFace { package_id: i32, emoji_id: String, key: String, summary: Option<String>, url: Option<String> },
-    LightApp { app_name: Option<String>, payload: String },
+    MarketFace {
+        package_id: i32,
+        emoji_id: String,
+        key: String,
+        summary: Option<String>,
+        url: Option<String>,
+    },
+    LightApp {
+        app_name: Option<String>,
+        payload: String,
+    },
     /// XML 卡片（OneBot `xml` / Milky 入站 `xml`）。与 `LightApp` 对称，避免 json 有
     /// 类型而 xml 退化成 `Raw` 的不对称。
-    Xml { service_id: Option<i32>, payload: String },
+    Xml {
+        service_id: Option<i32>,
+        payload: String,
+    },
     /// 戳一戳消息段（OneBot）。注意区别于 `send_nudge` 动作与 nudge 通知。
-    Poke { kind: i32, id: i32, strength: Option<i32>, name: Option<String> },
+    Poke {
+        kind: i32,
+        id: i32,
+        strength: Option<i32>,
+        name: Option<String>,
+    },
     /// 推荐好友/群名片。
-    Contact { kind: ContactKind, id: Uin },
+    Contact {
+        kind: ContactKind,
+        id: Uin,
+    },
     /// 位置分享。
-    Location { lat: f64, lon: f64, title: Option<String>, content: Option<String> },
+    Location {
+        lat: f64,
+        lon: f64,
+        title: Option<String>,
+        content: Option<String>,
+    },
     /// 音乐分享（发送向；接收通常表现为 `LightApp`）。
     Music(MusicShare),
     /// 链接分享卡片（OneBot `share`）。`url`/`title` 必填，`content`/`image` 可选。
     /// 与已建模的 LightApp/Xml/Music 卡片并列；Milky 发送侧无对应段（降级跳过）。
-    Share { url: String, title: String, content: Option<String>, image: Option<String> },
+    Share {
+        url: String,
+        title: String,
+        content: Option<String>,
+        image: Option<String>,
+    },
     /// 猜拳魔法表情（OneBot `rps`，收发皆有）。标准 v11 为空 data；NapCat 额外带
     /// `result`（1=布 / 2=剪刀 / 3=石头，随机数已定）→ `result` 保留（缺省 → None）。
     /// ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageRPS data `result`)
-    Rps { result: Option<i32> },
+    Rps {
+        result: Option<i32>,
+    },
     /// 掷骰子魔法表情（OneBot `dice`，收发皆有）。标准 v11 为空 data；NapCat 额外带
     /// `result`（1–6 点数）→ `result` 保留（缺省 → None）。
     /// ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageDice data `result`)
-    Dice { result: Option<i32> },
+    Dice {
+        result: Option<i32>,
+    },
     /// 窗口抖动 / 戳一戳快捷（OneBot `shake`，空 data，仅发送）。
     Shake,
     /// 匿名发送（OneBot `anonymous`，仅发送）。`ignore=Some(true)` 表示无法匿名时
     /// 继续以普通身份发送；`None` = 不带该字段。
-    Anonymous { ignore: Option<bool> },
+    Anonymous {
+        ignore: Option<bool>,
+    },
     /// QQ-Bot 内联键盘（Lagrange `keyboard` 段）。`content` 为 `KeyboardData` JSON
     /// 对象（按钮行/列）。Milky 无对应段（出站降级跳过）。
     /// 来源已核对（2026-06-04）：type=`"keyboard"`、data 字段 `content`（KeyboardData JSON）。
     /// ENDPOINT: LagrangeDev/Lagrange.Core Lagrange.OneBot/Message/Entity/KeyboardSegment.cs
-    Keyboard { content: Value },
+    Keyboard {
+        content: Value,
+    },
     /// Markdown 卡片（Lagrange `markdown` 段）。`content` 为 Markdown 文本字符串。
     /// Milky 无对应段（出站降级跳过）。
     /// 来源已核对（2026-06-04）：type=`"markdown"`、data 字段 `content`（string）。
     /// ENDPOINT: LagrangeDev/Lagrange.Core Lagrange.OneBot/Message/Entity/MarkdownSegment.cs
-    Markdown { content: String },
+    Markdown {
+        content: String,
+    },
     /// 长消息引用（Lagrange `longmsg` 段，主要入站）。`id` 为长消息 res_id。
     /// Milky 无对应段（出站降级跳过）。
     /// 来源已核对（2026-06-04）：type=`"longmsg"`、data 字段 `id`（string，**非** `res_id`）。
     /// ENDPOINT: LagrangeDev/Lagrange.Core Lagrange.OneBot/Message/Entity/LongMsgSegment.cs
-    LongMsg { id: String },
+    LongMsg {
+        id: String,
+    },
     /// QQ 闪传卡片（LLOneBot 私有 `flash_file` 段）。入站由 LLOneBot 解析「闪传」
     /// markdown 卡片得到；出站可据此重建段。`title` 在 wire 上偶有缺省（标题属性可能
     /// 取不到），故为 `Option`（缺失 → None，保持 decode 无误）。
@@ -171,24 +239,42 @@ pub enum Segment {
     /// `title`(string,可缺)/`file_set_id`(string)/`scene_type`(number)。
     /// ENDPOINT: LLOneBot/LLOneBot src/onebot11/types.ts (OB11MessageFlashFile)
     ///   + src/onebot11/transform/message/incoming.ts。
-    FlashFile { title: Option<String>, file_set_id: String, scene_type: i32 },
+    FlashFile {
+        title: Option<String>,
+        file_set_id: String,
+        scene_type: i32,
+    },
     /// 小程序卡片（NapCat 私有 `miniapp` 段）。`payload` 为小程序的 JSON 字符串
     /// （NapCat data 字段 `data`，原样透传，便于手工构建/转发）。与 LightApp/Xml 并列。
     /// 来源已核对（2026-06-04）：type=`"miniapp"`、data 字段 `data`（string，小程序 JSON）。
     /// ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageMiniAppSchema)
-    MiniApp { payload: String },
+    MiniApp {
+        payload: String,
+    },
     /// 在线文件/文件夹卡片（NapCat 私有 `onlinefile` 段）。
     /// 来源已核对（2026-06-04）：type=`"onlinefile"`、data 字段
     /// `msgId`(string)/`elementId`(string)/`fileName`(string)/`fileSize`(string)/`isDir`(bool)。
     /// ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageOnlineFileSchema)
-    OnlineFile { msg_id: String, element_id: String, file_name: String, file_size: String, is_dir: bool },
+    OnlineFile {
+        msg_id: String,
+        element_id: String,
+        file_name: String,
+        file_size: String,
+        is_dir: bool,
+    },
     /// QQ 闪传卡片（NapCat 私有 `flashtransfer` 段）。`file_set_id` 为闪传文件集 id。
     /// 与 LLOneBot 的 `FlashFile` 同属闪传但 wire 名/字段不同，故各自建模。
     /// 来源已核对（2026-06-04）：type=`"flashtransfer"`、data 字段 `fileSetId`（string）。
     /// ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageFlashTransferSchema)
-    FlashTransfer { file_set_id: String },
+    FlashTransfer {
+        file_set_id: String,
+    },
     /// 逃生口：协议私有/未知段。adapter 的 decode 必须把未知段塞进来，绝不丢弃。
-    Raw { protocol: Protocol, kind: String, data: Map<String, Value> },
+    Raw {
+        protocol: Protocol,
+        kind: String,
+        data: Map<String, Value>,
+    },
 }
 
 impl Segment {
@@ -282,14 +368,7 @@ impl Forward {
     /// （`summary`/`prompt`/`news`/`source`）默认空。需要其一时用链式 setter 或直接
     /// 构造 [`Forward::Nodes`] 结构体变体。镜像 `Segment::share`/`music` 的默认化约定。
     pub fn nodes(nodes: Vec<ForwardNode>) -> Self {
-        Forward::Nodes {
-            nodes,
-            title: None,
-            summary: None,
-            prompt: None,
-            news: Vec::new(),
-            source: None,
-        }
+        Forward::Nodes { nodes, title: None, summary: None, prompt: None, news: Vec::new(), source: None }
     }
     /// 设卡片标题（仅对 [`Forward::Nodes`] 生效；`Ref` 变体原样返回）。
     pub fn title(mut self, t: impl Into<String>) -> Self {

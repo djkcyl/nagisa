@@ -12,13 +12,41 @@ use nagisa_types::id::{Peer, Uin};
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum EventKind {
     Message,
-    MemberJoin, MemberLeave, Mute, WholeMute, AdminChange, GroupNameChange,
-    Honor, GroupCardChange, Recall, Reaction, EssenceChange, LuckyKing,
-    Nudge, FriendAdd, GroupFileUpload, FriendFileUpload, PeerPin,
-    GroupDismiss, GroupTitleChange, InputStatus, ProfileLike, GrayTip,
-    PokeRecall, OnlineFile, FlashFile,
-    FriendRequest, GroupJoinRequest, GroupInvitedJoin, GroupInvite,
-    Connect, Disconnect, Ready, Heartbeat, BotOnline, BotOffline,
+    MemberJoin,
+    MemberLeave,
+    Mute,
+    WholeMute,
+    AdminChange,
+    GroupNameChange,
+    Honor,
+    GroupCardChange,
+    Recall,
+    Reaction,
+    EssenceChange,
+    LuckyKing,
+    Nudge,
+    FriendAdd,
+    GroupFileUpload,
+    FriendFileUpload,
+    PeerPin,
+    GroupDismiss,
+    GroupTitleChange,
+    InputStatus,
+    ProfileLike,
+    GrayTip,
+    PokeRecall,
+    OnlineFile,
+    FlashFile,
+    FriendRequest,
+    GroupJoinRequest,
+    GroupInvitedJoin,
+    GroupInvite,
+    Connect,
+    Disconnect,
+    Ready,
+    Heartbeat,
+    BotOnline,
+    BotOffline,
     Raw,
 }
 
@@ -86,13 +114,19 @@ impl EventKind {
 // 是 bot 自己时跳过(自事件过滤——防止 bot 对自己的戳一戳作出反应)。
 
 /// 有成员入群（`Notice::MemberIncrease`）。
-pub struct MemberJoin { pub group: Uin, pub user: Uin, pub operator: Option<Uin>, pub invitor: Option<Uin> }
+pub struct MemberJoin {
+    pub group: Uin,
+    pub user: Uin,
+    pub operator: Option<Uin>,
+    pub invitor: Option<Uin>,
+}
 #[async_trait]
 impl FromContext for MemberJoin {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Notice(Notice::MemberIncrease { group, user, operator, invitor }) =>
-                Ok(MemberJoin { group: *group, user: *user, operator: *operator, invitor: *invitor }),
+            Event::Notice(Notice::MemberIncrease { group, user, operator, invitor }) => {
+                Ok(MemberJoin { group: *group, user: *user, operator: *operator, invitor: *invitor })
+            }
             _ => Err(Reject::Skip),
         }
     }
@@ -109,21 +143,28 @@ pub struct MemberLeave {
 impl FromContext for MemberLeave {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Notice(Notice::MemberDecrease { group, user, operator, reason }) =>
-                Ok(MemberLeave { group: *group, user: *user, operator: *operator, reason: *reason }),
+            Event::Notice(Notice::MemberDecrease { group, user, operator, reason }) => {
+                Ok(MemberLeave { group: *group, user: *user, operator: *operator, reason: *reason })
+            }
             _ => Err(Reject::Skip),
         }
     }
 }
 
 /// 群里有成员被禁言（`Notice::Mute`）。
-pub struct Mute { pub group: Uin, pub user: Uin, pub operator: Uin, pub duration: i32 }
+pub struct Mute {
+    pub group: Uin,
+    pub user: Uin,
+    pub operator: Uin,
+    pub duration: i32,
+}
 #[async_trait]
 impl FromContext for Mute {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Notice(Notice::Mute { group, user, operator, duration }) =>
-                Ok(Mute { group: *group, user: *user, operator: *operator, duration: *duration }),
+            Event::Notice(Notice::Mute { group, user, operator, duration }) => {
+                Ok(Mute { group: *group, user: *user, operator: *operator, duration: *duration })
+            }
             _ => Err(Reject::Skip),
         }
     }
@@ -144,8 +185,9 @@ pub struct Recall {
 impl FromContext for Recall {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Notice(Notice::Recall { peer, id, sender, operator, suffix }) =>
-                Ok(Recall { peer: *peer, id: id.clone(), sender: *sender, operator: *operator, suffix: suffix.clone() }),
+            Event::Notice(Notice::Recall { peer, id, sender, operator, suffix }) => {
+                Ok(Recall { peer: *peer, id: id.clone(), sender: *sender, operator: *operator, suffix: suffix.clone() })
+            }
             _ => Err(Reject::Skip),
         }
     }
@@ -153,7 +195,11 @@ impl FromContext for Recall {
 
 /// 戳一戳事件——统一 `Notice::FriendNudge` 与 `Notice::GroupNudge`，归一为
 /// `{ peer, sender, receiver }`。自过滤：`sender == self_id` 时跳过（防止 bot 对自己的戳一戳反应）。
-pub struct Nudge { pub peer: Peer, pub sender: Uin, pub receiver: Uin }
+pub struct Nudge {
+    pub peer: Peer,
+    pub sender: Uin,
+    pub receiver: Uin,
+}
 #[async_trait]
 impl FromContext for Nudge {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
@@ -178,7 +224,9 @@ impl FromContext for Nudge {
 }
 
 /// 新加了一个好友（`Notice::FriendAdd`）。
-pub struct FriendAdd { pub user: Uin }
+pub struct FriendAdd {
+    pub user: Uin,
+}
 #[async_trait]
 impl FromContext for FriendAdd {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
@@ -190,26 +238,40 @@ impl FromContext for FriendAdd {
 }
 
 /// 好友请求（`Request::Friend`）。
-pub struct FriendRequest { pub initiator: Uin, pub comment: String, pub token: nagisa_types::event::RequestToken }
+pub struct FriendRequest {
+    pub initiator: Uin,
+    pub comment: String,
+    pub token: nagisa_types::event::RequestToken,
+}
 #[async_trait]
 impl FromContext for FriendRequest {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Request(Request::Friend { initiator, comment, token, .. }) =>
-                Ok(FriendRequest { initiator: *initiator, comment: comment.clone(), token: token.clone() }),
+            Event::Request(Request::Friend { initiator, comment, token, .. }) => {
+                Ok(FriendRequest { initiator: *initiator, comment: comment.clone(), token: token.clone() })
+            }
             _ => Err(Reject::Skip),
         }
     }
 }
 
 /// 入群请求（`Request::GroupJoin`）。
-pub struct GroupJoinRequest { pub group: Uin, pub initiator: Uin, pub comment: String, pub token: nagisa_types::event::RequestToken }
+pub struct GroupJoinRequest {
+    pub group: Uin,
+    pub initiator: Uin,
+    pub comment: String,
+    pub token: nagisa_types::event::RequestToken,
+}
 #[async_trait]
 impl FromContext for GroupJoinRequest {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Request(Request::GroupJoin { group, initiator, comment, token, .. }) =>
-                Ok(GroupJoinRequest { group: *group, initiator: *initiator, comment: comment.clone(), token: token.clone() }),
+            Event::Request(Request::GroupJoin { group, initiator, comment, token, .. }) => Ok(GroupJoinRequest {
+                group: *group,
+                initiator: *initiator,
+                comment: comment.clone(),
+                token: token.clone(),
+            }),
             _ => Err(Reject::Skip),
         }
     }
@@ -217,13 +279,19 @@ impl FromContext for GroupJoinRequest {
 
 /// 群管理员被设置/取消（`Notice::AdminChange`）。`is_set` = 升为管理员。
 /// （`user == self_id` 时即 bot 自身权限变更，可据此监听 bot 被设/免管理员。）
-pub struct AdminChange { pub group: Uin, pub user: Uin, pub operator: Option<Uin>, pub is_set: bool }
+pub struct AdminChange {
+    pub group: Uin,
+    pub user: Uin,
+    pub operator: Option<Uin>,
+    pub is_set: bool,
+}
 #[async_trait]
 impl FromContext for AdminChange {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Notice(Notice::AdminChange { group, user, operator, is_set }) =>
-                Ok(AdminChange { group: *group, user: *user, operator: *operator, is_set: *is_set }),
+            Event::Notice(Notice::AdminChange { group, user, operator, is_set }) => {
+                Ok(AdminChange { group: *group, user: *user, operator: *operator, is_set: *is_set })
+            }
             _ => Err(Reject::Skip),
         }
     }
@@ -231,39 +299,58 @@ impl FromContext for AdminChange {
 
 /// 某成员的群名片（昵称）变更（`Notice::GroupCardChange`）。
 /// （可在此对新名片做文本审核等处理。）
-pub struct GroupCardChange { pub group: Uin, pub user: Uin, pub old_card: String, pub new_card: String }
+pub struct GroupCardChange {
+    pub group: Uin,
+    pub user: Uin,
+    pub old_card: String,
+    pub new_card: String,
+}
 #[async_trait]
 impl FromContext for GroupCardChange {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Notice(Notice::GroupCardChange { group, user, old_card, new_card }) =>
-                Ok(GroupCardChange { group: *group, user: *user, old_card: old_card.clone(), new_card: new_card.clone() }),
+            Event::Notice(Notice::GroupCardChange { group, user, old_card, new_card }) => Ok(GroupCardChange {
+                group: *group,
+                user: *user,
+                old_card: old_card.clone(),
+                new_card: new_card.clone(),
+            }),
             _ => Err(Reject::Skip),
         }
     }
 }
 
 /// 群荣誉变更（龙王/群聊之火/快乐源泉）（`Notice::Honor`）。
-pub struct Honor { pub group: Uin, pub user: Uin, pub honor: nagisa_types::event::HonorKind }
+pub struct Honor {
+    pub group: Uin,
+    pub user: Uin,
+    pub honor: nagisa_types::event::HonorKind,
+}
 #[async_trait]
 impl FromContext for Honor {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Notice(Notice::Honor { group, user, honor }) =>
-                Ok(Honor { group: *group, user: *user, honor: *honor }),
+            Event::Notice(Notice::Honor { group, user, honor }) => {
+                Ok(Honor { group: *group, user: *user, honor: *honor })
+            }
             _ => Err(Reject::Skip),
         }
     }
 }
 
 /// 群红包运气王结果（`Notice::LuckyKing`）。`user` = 发红包者，`target` = 运气王。
-pub struct LuckyKing { pub group: Uin, pub user: Uin, pub target: Uin }
+pub struct LuckyKing {
+    pub group: Uin,
+    pub user: Uin,
+    pub target: Uin,
+}
 #[async_trait]
 impl FromContext for LuckyKing {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Notice(Notice::LuckyKing { group, user, target }) =>
-                Ok(LuckyKing { group: *group, user: *user, target: *target }),
+            Event::Notice(Notice::LuckyKing { group, user, target }) => {
+                Ok(LuckyKing { group: *group, user: *user, target: *target })
+            }
             _ => Err(Reject::Skip),
         }
     }
@@ -288,7 +375,9 @@ impl FromContext for Connect {
 }
 
 /// 协议端（传输层）断开（[`Meta::Disconnect`]）。`reason` 为底层错误文案（如有）。
-pub struct Disconnect { pub reason: Option<String> }
+pub struct Disconnect {
+    pub reason: Option<String>,
+}
 #[async_trait]
 impl FromContext for Disconnect {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
@@ -301,7 +390,10 @@ impl FromContext for Disconnect {
 
 /// 框架就绪：已解析出可用账号（[`Meta::Ready`]，每次 `run_*` 仅一次）。`self_id` 为机器人账号，
 /// `nickname` 为其昵称（来自 `get_login_info`，未知时为空串）。
-pub struct Ready { pub self_id: Uin, pub nickname: String }
+pub struct Ready {
+    pub self_id: Uin,
+    pub nickname: String,
+}
 #[async_trait]
 impl FromContext for Ready {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
@@ -315,7 +407,9 @@ impl FromContext for Ready {
 }
 
 /// 机器人账号上线（[`Meta::BotOnline`]）。`reason` 为上线原因文案（Lagrange 提供，OneBot 为 None）。
-pub struct BotOnline { pub reason: Option<String> }
+pub struct BotOnline {
+    pub reason: Option<String>,
+}
 #[async_trait]
 impl FromContext for BotOnline {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
@@ -339,13 +433,18 @@ impl FromContext for BotOffline {
 }
 
 /// 心跳（[`Meta::Heartbeat`]）。`interval` 为心跳间隔（ms），`online`/`good` 取自 status。
-pub struct Heartbeat { pub interval: i64, pub online: bool, pub good: bool }
+pub struct Heartbeat {
+    pub interval: i64,
+    pub online: bool,
+    pub good: bool,
+}
 #[async_trait]
 impl FromContext for Heartbeat {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.event().as_ref() {
-            Event::Meta(Meta::Heartbeat { interval, status }) =>
-                Ok(Heartbeat { interval: *interval, online: status.online, good: status.good }),
+            Event::Meta(Meta::Heartbeat { interval, status }) => {
+                Ok(Heartbeat { interval: *interval, online: status.online, good: status.good })
+            }
             _ => Err(Reject::Skip),
         }
     }

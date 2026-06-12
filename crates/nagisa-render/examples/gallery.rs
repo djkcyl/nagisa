@@ -8,8 +8,7 @@
 
 use image::{ImageBuffer, Rgba};
 use nagisa_render::{
-    parse_markup, render_document, Align, Anchor, Doc, Document, FontHandle, Length, PageChrome,
-    RenderOptions, Theme,
+    parse_markup, render_document, Align, Anchor, Doc, Document, FontHandle, Length, PageChrome, RenderOptions, Theme,
 };
 use std::fs;
 
@@ -297,9 +296,12 @@ fn panels(b: &mut Doc) {
     .panel(|p| {
         p.bg("#eef2ff").border(2.0, "#4c63b6").rounded(18.0).shadow();
         p.paragraph(|d| {
-            d.styled("面板:底色 / 边框 / 圆角 / 内边距 / 投影的卡片容器;并排栏里整栏一个面板时自动拉齐行高。", |s| {
-                s.color("#312e81");
-            });
+            d.styled(
+                "面板:底色 / 边框 / 圆角 / 内边距 / 投影的卡片容器;并排栏里整栏一个面板时自动拉齐行高。",
+                |s| {
+                    s.color("#312e81");
+                },
+            );
         });
     });
 }
@@ -383,9 +385,7 @@ fn fonts() -> FontHandle {
 
 /// 生成一张渐变 PNG(样张里的占位图)。
 fn gradient_png(w: u32, h: u32) -> Vec<u8> {
-    let img = ImageBuffer::from_fn(w, h, |x, y| {
-        Rgba([(x * 255 / w) as u8, (y * 255 / h) as u8, 170, 255])
-    });
+    let img = ImageBuffer::from_fn(w, h, |x, y| Rgba([(x * 255 / w) as u8, (y * 255 / h) as u8, 170, 255]));
     let mut buf = std::io::Cursor::new(Vec::new());
     img.write_to(&mut buf, image::ImageFormat::Png).expect("编码占位图");
     buf.into_inner()

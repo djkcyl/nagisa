@@ -32,24 +32,14 @@ pub(super) fn decode_message(ev: RawEventJson) -> Event {
     // 群场景:从丰富的 `sender` 子对象合成 MemberInfo,使 bot 不必再发一次
     // get_group_member_info 就能读到 nickname/card/role/title。
     let member = if is_group {
-        ev.sender
-            .as_ref()
-            .map(|s| member_from_sender(s, sender, Uin(ev.group_id.unwrap_or(0))))
+        ev.sender.as_ref().map(|s| member_from_sender(s, sender, Uin(ev.group_id.unwrap_or(0))))
     } else {
         None
     };
     // 私聊场景:从 `sender` 子对象合成 FriendInfo(user_id/nickname/sex;age/其余留在 raw),
     // 使 bot 不必再发一次 get_stranger_info 就能读到结构化好友字段。群场景 → None。
-    let friend = if is_group {
-        None
-    } else {
-        ev.sender.as_ref().map(|s| friend_from_sender(s, sender))
-    };
-    let anonymous = ev.anonymous.as_ref().map(|a| Anonymous {
-        id: a.id,
-        name: a.name.clone(),
-        flag: a.flag.clone(),
-    });
+    let friend = if is_group { None } else { ev.sender.as_ref().map(|s| friend_from_sender(s, sender)) };
+    let anonymous = ev.anonymous.as_ref().map(|a| Anonymous { id: a.id, name: a.name.clone(), flag: a.flag.clone() });
 
     // LLOneBot/NapCat 私聊临时会话的来源对端 `target_id`（群消息无此字段）。
     let target_id = ev.target_id.filter(|_| !is_group).map(Uin);

@@ -12,9 +12,5 @@ use tokio::sync::mpsc;
 #[async_trait]
 pub trait EventSource: Send + Sync + 'static {
     /// 长生命周期任务：仅在 `shutdown` 触发或永久失败时返回。
-    async fn run(
-        self: Arc<Self>,
-        sink: mpsc::Sender<Event>,
-        shutdown: ShutdownToken,
-    ) -> Result<()>;
+    async fn run(self: Arc<Self>, sink: mpsc::Sender<Event>, shutdown: ShutdownToken) -> Result<()>;
 }

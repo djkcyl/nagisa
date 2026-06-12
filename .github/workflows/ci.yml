@@ -11,7 +11,7 @@ env:
 
 jobs:
   ci:
-    name: build · clippy · doc
+    name: fmt · build · clippy · doc
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,11 +22,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
 
-      # 门禁三件套(与本地一致):刻意零测试,正确性靠真实协议端连线实测。
+      # 门禁四件套(与本地一致):刻意零测试,正确性靠真实协议端连线实测。
+      - name: fmt
+        run: cargo fmt --check
+
       - name: build
         run: cargo build --workspace --all-features
 

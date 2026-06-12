@@ -8,8 +8,8 @@ use crate::event_trigger::EventKind;
 use crate::extract::{Extracted, FromContext, Reject, Reply};
 use async_trait::async_trait;
 use nagisa_types::event::Event;
-use nagisa_types::prelude::*;
 use nagisa_types::message::MessageExt;
+use nagisa_types::prelude::*;
 use std::any::TypeId;
 use std::collections::HashSet;
 use std::future::Future;
@@ -151,27 +151,14 @@ impl WaiterStore {
     }
 
     /// 注册一条 waiter 条目，返回其 id（生产路径走 `WaiterBuilder::build`，它预分配好 id）。
-    pub fn register(
-        &self,
-        depth: u32,
-        selector: Selector,
-        block: bool,
-        tx: mpsc::Sender<Arc<Event>>,
-    ) -> u64 {
+    pub fn register(&self, depth: u32, selector: Selector, block: bool, tx: mpsc::Sender<Arc<Event>>) -> u64 {
         let id = self.next_id();
         self.register_with_id(id, depth, selector, block, tx);
         id
     }
 
     /// 用调用方给定的 id 注册（使 `Waiter` 持同一 id 供 `Drop` 摘除）。
-    pub fn register_with_id(
-        &self,
-        id: u64,
-        depth: u32,
-        selector: Selector,
-        block: bool,
-        tx: mpsc::Sender<Arc<Event>>,
-    ) {
+    pub fn register_with_id(&self, id: u64, depth: u32, selector: Selector, block: bool, tx: mpsc::Sender<Arc<Event>>) {
         self.lock().push(WaiterEntry { id, depth, selector, block, tx });
     }
 
@@ -518,13 +505,7 @@ impl Waiter {
     /// 即「没听懂，请回答 y/n」式的循环。超时 → `None`。
     ///
     /// 匹配在消息纯文本上做：去首尾空白、大小写不敏感。
-    pub async fn confirm(
-        &self,
-        timeout: Duration,
-        who: Uin,
-        yes: &str,
-        no: &str,
-    ) -> Option<bool> {
+    pub async fn confirm(&self, timeout: Duration, who: Uin, yes: &str, no: &str) -> Option<bool> {
         let yes = yes.trim().to_lowercase();
         let no = no.trim().to_lowercase();
         self.recv_with(timeout, |ctx| {

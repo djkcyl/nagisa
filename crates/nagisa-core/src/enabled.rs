@@ -38,10 +38,7 @@ pub struct EnabledSet {
 
 impl EnabledSet {
     pub fn new() -> Self {
-        Self {
-            inner: RwLock::new(Inner::default()),
-            on_change: Mutex::new(None),
-        }
+        Self { inner: RwLock::new(Inner::default()), on_change: Mutex::new(None) }
     }
 
     /// 设置某命令的启用状态：`peer=None` 为全局覆盖，`Some(p)` 为按会话覆盖。
@@ -83,9 +80,13 @@ impl EnabledSet {
     fn key_on(&self, key: &str, default: bool, peer: Option<Peer>) -> bool {
         let g = self.inner.read().unwrap_or_else(|e| e.into_inner());
         if let Some(p) = peer {
-            if let Some(v) = g.per_peer.get(&(key.to_string(), p)) { return *v; }
+            if let Some(v) = g.per_peer.get(&(key.to_string(), p)) {
+                return *v;
+            }
         }
-        if let Some(v) = g.global.get(key) { return *v; }
+        if let Some(v) = g.global.get(key) {
+            return *v;
+        }
         default
     }
 

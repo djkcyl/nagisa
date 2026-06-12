@@ -330,12 +330,7 @@ pub struct Watermark {
 impl Watermark {
     /// 默认形态的水印(右下角、白 40%)。
     pub fn new(text: impl Into<String>) -> Self {
-        Self {
-            text: text.into(),
-            anchor: Anchor::BottomRight,
-            color: Color::rgba(255, 255, 255, 102),
-            size: 0.9,
-        }
+        Self { text: text.into(), anchor: Anchor::BottomRight, color: Color::rgba(255, 255, 255, 102), size: 0.9 }
     }
 }
 

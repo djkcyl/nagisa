@@ -50,9 +50,7 @@ async fn start(reply: Reply, ep: EventPeer, session: Session) -> HandlerResult {
 #[tokio::main]
 async fn main() -> Result<()> {
     let shutdown = nagisa::ctrl_c_shutdown();
-    App::new()
-        .run_onebot(OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"), shutdown)
-        .await
+    App::new().run_onebot(OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"), shutdown).await
 }
 
 #[cfg(not(feature = "onebot"))]

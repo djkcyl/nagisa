@@ -82,12 +82,7 @@ pub(crate) fn expand_slots(input: DeriveInput) -> syn::Result<proc_macro2::Token
     let fields = match &input.data {
         Data::Struct(s) => match &s.fields {
             Fields::Named(named) => &named.named,
-            _ => {
-                return Err(Error::new_spanned(
-                    struct_ident,
-                    "#[derive(Slots)] requires a struct with named fields",
-                ))
-            }
+            _ => return Err(Error::new_spanned(struct_ident, "#[derive(Slots)] requires a struct with named fields")),
         },
         _ => return Err(Error::new_spanned(struct_ident, "#[derive(Slots)] only supports structs")),
     };
@@ -170,8 +165,7 @@ pub(crate) fn expand_slots(input: DeriveInput) -> syn::Result<proc_macro2::Token
             }
             SlotSrc::Union(alts) => {
                 // (a|b),各臂转义。
-                let escaped: Vec<LitStr> =
-                    alts.iter().map(|a| LitStr::new(a, Span::call_site())).collect();
+                let escaped: Vec<LitStr> = alts.iter().map(|a| LitStr::new(a, Span::call_site())).collect();
                 quote! {
                     ::std::format!("{}({})", #sep,
                         [ #( #nc::regex_escape(#escaped) ),* ].join("|"))
@@ -200,8 +194,7 @@ pub(crate) fn expand_slots(input: DeriveInput) -> syn::Result<proc_macro2::Token
         field_idents.push(ident.clone());
         let fs = LitStr::new(&ident.to_string(), Span::call_site());
         let names = slot_group_names(s);
-        let name_lits: Vec<LitStr> =
-            names.iter().map(|n| LitStr::new(n, Span::call_site())).collect();
+        let name_lits: Vec<LitStr> = names.iter().map(|n| LitStr::new(n, Span::call_site())).collect();
 
         // 取一个命名组的 Option<String>(缺组 ⇒ None)。
         let get = |nm: &LitStr| {

@@ -11,7 +11,6 @@
 //!     退避重连。
 //!   - `get_event` 长轮询——经 `get_event` 动作周期性排空后端事件队列。
 use crate::adapter::{LLOneBotEventMode, OneBotAdapter};
-use nagisa_core::adapter::ActionInvoker; // 为了 `adapter.vendor()`(trait 方法)
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -19,6 +18,7 @@ use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::Router;
 use hmac::{Hmac, KeyInit, Mac};
+use nagisa_core::adapter::ActionInvoker; // 为了 `adapter.vendor()`(trait 方法)
 use nagisa_core::adapter::OneBotActions; // 为了 `adapter.get_event()`(trait 方法)
 use nagisa_core::ShutdownToken;
 use nagisa_types::error::{Error, Result, TransportError};
@@ -52,13 +52,10 @@ pub async fn run_http_post(
     adapter.install_http_api(reqwest::Client::new(), api_url);
 
     let state = HttpState { adapter, sink, secret };
-    let app = Router::new()
-        .route(&post_path, post(handle_post))
-        .with_state(state);
+    let app = Router::new().route(&post_path, post(handle_post)).with_state(state);
 
-    let listener = TcpListener::bind(post_bind)
-        .await
-        .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+    let listener =
+        TcpListener::bind(post_bind).await.map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
     tracing::info!(%post_bind, %post_path, "onebot http-post webhook listening");
 
     let sd = shutdown.clone();
@@ -71,17 +68,10 @@ pub async fn run_http_post(
 
 /// `POST <post_path>`:校验签名(若配置),decode → Event,推送。若适配器有 quick-op hook 且对
 /// 该解码事件返回 `Some(json)`,则回 `200 OK` + 该 JSON;否则回 `204 NO_CONTENT`。
-async fn handle_post(
-    State(state): State<HttpState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> impl IntoResponse {
+async fn handle_post(State(state): State<HttpState>, headers: HeaderMap, body: Bytes) -> impl IntoResponse {
     // X-Signature 校验(仅在配置了密钥时)。
     if let Some(secret) = &state.secret {
-        let provided = headers
-            .get("X-Signature")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
+        let provided = headers.get("X-Signature").and_then(|v| v.to_str().ok()).unwrap_or("");
         if !verify_signature(secret, &body, provided) {
             tracing::warn!("http-post: X-Signature mismatch; rejecting");
             return (StatusCode::UNAUTHORIZED, axum::body::Body::empty()).into_response();
@@ -104,11 +94,8 @@ async fn handle_post(
                     return (StatusCode::INTERNAL_SERVER_ERROR, axum::body::Body::empty()).into_response();
                 }
             };
-            return (
-                StatusCode::OK,
-                [(axum::http::header::CONTENT_TYPE, "application/json")],
-                json_body,
-            ).into_response();
+            return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/json")], json_body)
+                .into_response();
         }
     }
     (StatusCode::NO_CONTENT, axum::body::Body::empty()).into_response()
@@ -158,9 +145,7 @@ pub async fn run_llonebot_http(
     adapter.install_http_api(reqwest::Client::new(), api_url.clone());
     match events {
         LLOneBotEventMode::Sse => run_llonebot_sse(adapter, api_url, sink, shutdown).await,
-        LLOneBotEventMode::LongPoll { interval } => {
-            run_llonebot_long_poll(adapter, interval, sink, shutdown).await
-        }
+        LLOneBotEventMode::LongPoll { interval } => run_llonebot_long_poll(adapter, interval, sink, shutdown).await,
     }
 }
 
@@ -181,22 +166,25 @@ async fn run_llonebot_sse(
     // 关键约定:**不**在 clean end 重置退避——否则一个立刻断流的异常端会被以 ~2 req/s
     // 热重连(每次 end 都回 500ms),永远到不了封顶；故退避统一只倍增、封顶,由 reconnect
     // helper 的「Step::Reconnect 不区分 Ok(false)/Err」保证。SSE 路径不发 Meta::Disconnect。
-    let backoff = nagisa_core::reconnect::Backoff::new(
-        Duration::from_millis(500),
-        Duration::from_millis(SSE_MAX_BACKOFF_MS),
-    );
-    nagisa_core::reconnect::run(&shutdown, backoff, |_| 0, || async {
-        match sse_connect_and_pump(&adapter, &client, &url, &sink, &shutdown).await {
-            // 流中途观察到 shutdown。
-            Ok(true) => nagisa_core::reconnect::Step::Stop,
-            // 流结束 / 空闲 → 带退避重连。
-            Ok(false) => nagisa_core::reconnect::Step::Reconnect,
-            Err(e) => {
-                tracing::warn!(error = %e, "llonebot sse /_events disconnected; reconnecting");
-                nagisa_core::reconnect::Step::Reconnect
+    let backoff =
+        nagisa_core::reconnect::Backoff::new(Duration::from_millis(500), Duration::from_millis(SSE_MAX_BACKOFF_MS));
+    nagisa_core::reconnect::run(
+        &shutdown,
+        backoff,
+        |_| 0,
+        || async {
+            match sse_connect_and_pump(&adapter, &client, &url, &sink, &shutdown).await {
+                // 流中途观察到 shutdown。
+                Ok(true) => nagisa_core::reconnect::Step::Stop,
+                // 流结束 / 空闲 → 带退避重连。
+                Ok(false) => nagisa_core::reconnect::Step::Reconnect,
+                Err(e) => {
+                    tracing::warn!(error = %e, "llonebot sse /_events disconnected; reconnecting");
+                    nagisa_core::reconnect::Step::Reconnect
+                }
             }
-        }
-    })
+        },
+    )
     .await
 }
 
@@ -220,15 +208,10 @@ async fn sse_connect_and_pump(
     if let Some(token) = adapter.access_token() {
         req = req.bearer_auth(token);
     }
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+    let resp = req.send().await.map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(Error::Transport(TransportError::Http(format!(
-            "llonebot sse GET /_events: HTTP {status}"
-        ))));
+        return Err(Error::Transport(TransportError::Http(format!("llonebot sse GET /_events: HTTP {status}"))));
     }
     tracing::info!("llonebot sse /_events connected: {url}");
 

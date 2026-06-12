@@ -32,39 +32,36 @@
 // 溯源注释里特意保留裸 URL(OFFICIAL:/ENDPOINT: 行,非给 rustdoc 渲染的链接);
 // 不为它们刷 bare_urls 告警、淹没真问题。
 #![allow(rustdoc::bare_urls)]
-pub mod error;
-pub mod context;
 pub mod capability;
-pub mod vendor;
+pub mod context;
 pub mod entity;
-pub mod id;
-pub mod resource;
-pub mod message;
-pub mod segment;
+pub mod error;
 pub mod event;
+pub mod id;
+pub mod message;
+pub mod resource;
+pub mod segment;
+pub mod vendor;
 
 pub use vendor::Vendor;
 
 /// 常用类型的便捷导入：`use nagisa_types::prelude::*;`（业务侧通常经 `nagisa::prelude::*` 间接拿到）。
 pub mod prelude {
     pub use crate::capability::{Capability, Protocol};
-    pub use crate::entity::{
-        AiCharacter, AiCharacterGroup, Announcement, Business, EmojiLiker, EssenceMessage,
-        FileFetch, FileMeta, ForwardSendResult, FriendCategory, FriendCategoryList, FriendGroup,
-        FriendInfo, FriendStatus, GroupFileList, GroupFolder, GroupInfo, HonorList, HonorMember,
-        ImplStat, ImplStatus, MemberInfo, OcrText, ProfileLiker, Rkey, Role, Sex, UserInfo,
-        VersionInfo,
-    };
     pub use crate::context::Context;
+    pub use crate::entity::{
+        AiCharacter, AiCharacterGroup, Announcement, Business, EmojiLiker, EssenceMessage, FileFetch, FileMeta,
+        ForwardSendResult, FriendCategory, FriendCategoryList, FriendGroup, FriendInfo, FriendStatus, GroupFileList,
+        GroupFolder, GroupInfo, HonorList, HonorMember, ImplStat, ImplStatus, MemberInfo, OcrText, ProfileLiker, Rkey,
+        Role, Sex, UserInfo, VersionInfo,
+    };
     pub use crate::error::{ActionErrorKind, Error, Result, TransportError};
     pub use crate::event::{
-        Anonymous, Event, HonorKind, MemberDecreaseReason, Meta, MessageEvent, MessageStyle,
-        Notice, ReactionKind, Request, RequestState, RequestToken,
+        Anonymous, Event, HonorKind, MemberDecreaseReason, MessageEvent, MessageStyle, Meta, Notice, ReactionKind,
+        Request, RequestState, RequestToken,
     };
     pub use crate::id::{MessageId, Peer, Scene, Uin};
     pub use crate::message::{Message, MessageExt, Msg};
     pub use crate::resource::{Media, ResourceRef, ResourceSource};
-    pub use crate::segment::{
-        ContactKind, Forward, ForwardNode, ImageSubType, MusicShare, Segment,
-    };
+    pub use crate::segment::{ContactKind, Forward, ForwardNode, ImageSubType, MusicShare, Segment};
 }

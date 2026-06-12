@@ -13,10 +13,7 @@ pub(super) fn decode_request(ev: RawEventJson) -> Event {
             via: "onebot".to_string(),
             // go-cqhttp/Lagrange 扩展:来自群的好友请求在 `group_id`(或 `source_group`)下携带
             // 来源群;否则 None。
-            source_group: ev
-                .group_id
-                .or_else(|| ev.extra.get("source_group").and_then(Value::as_i64))
-                .map(Uin),
+            source_group: ev.group_id.or_else(|| ev.extra.get("source_group").and_then(Value::as_i64)).map(Uin),
             // Milky 才有的 FriendRequest 丰富字段:OneBot 没有 target/state/is_filtered,
             // 请求时间戳落在事件外层封包上。
             target_user_id: None,
@@ -28,13 +25,7 @@ pub(super) fn decode_request(ev: RawEventJson) -> Event {
         Some("group") => {
             let group = Uin(ev.group_id.unwrap_or(0));
             if ev.sub_type.as_deref() == Some("invite") {
-                Event::Request(Request::GroupInvite {
-                    group,
-                    initiator,
-                    comment,
-                    source_group: None,
-                    token,
-                })
+                Event::Request(Request::GroupInvite { group, initiator, comment, source_group: None, token })
             } else {
                 Event::Request(Request::GroupJoin {
                     group,

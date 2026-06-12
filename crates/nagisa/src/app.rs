@@ -32,8 +32,8 @@
 //! `run_with` 在分发循环启动后、`Supervisor` 跑起来之前,会把 [`Bot`] 发布进
 //! [`ServiceBus`]:服务在 `prepare` / `run` 阶段可直接 `bus.get::<Bot>()` 拿到句柄。
 use nagisa_core::{
-    collect_into, CooldownStore, EnabledOverrides, EnabledSet, FlightStore, Handler, KillSwitch,
-    Matcher, Middleware, Rendezvous, Router, Rule, SleepState, Superusers, WaiterStore,
+    collect_into, CooldownStore, EnabledOverrides, EnabledSet, FlightStore, Handler, KillSwitch, Matcher, Middleware,
+    Rendezvous, Router, Rule, SleepState, Superusers, WaiterStore,
 };
 use nagisa_types::id::Uin;
 use std::sync::Arc;
@@ -387,22 +387,14 @@ impl App {
 
     /// 让 app 跑在一个 OneBot v11 端点上。`shutdown` 触发或传输致命失败时返回。
     #[cfg(feature = "onebot")]
-    pub async fn run_onebot(
-        self,
-        cfg: nagisa_onebot::OneBotConfig,
-        shutdown: ShutdownToken,
-    ) -> Result<()> {
+    pub async fn run_onebot(self, cfg: nagisa_onebot::OneBotConfig, shutdown: ShutdownToken) -> Result<()> {
         let adapter = nagisa_onebot::OneBotAdapter::new(cfg);
         self.run_with(adapter, shutdown).await
     }
 
     /// 让 app 跑在一个 Milky 端点上。`shutdown` 触发或传输致命失败时返回。
     #[cfg(feature = "milky")]
-    pub async fn run_milky(
-        self,
-        cfg: nagisa_milky::MilkyConfig,
-        shutdown: ShutdownToken,
-    ) -> Result<()> {
+    pub async fn run_milky(self, cfg: nagisa_milky::MilkyConfig, shutdown: ShutdownToken) -> Result<()> {
         let adapter = Arc::new(nagisa_milky::MilkyAdapter::new(cfg)?);
         self.run_with(adapter, shutdown).await
     }
@@ -430,11 +422,8 @@ impl App {
         }
 
         // —— 2. socket 起来后解析 self_id(+ nickname)(急切,带重试)。 ——
-        let (self_id, nickname) = resolve_self_id(
-            Arc::clone(&adapter) as Arc<dyn nagisa_core::adapter::ActionInvoker>,
-            &shutdown,
-        )
-        .await;
+        let (self_id, nickname) =
+            resolve_self_id(Arc::clone(&adapter) as Arc<dyn nagisa_core::adapter::ActionInvoker>, &shutdown).await;
         let bot = Bot::new(adapter, self_id);
 
         // —— 3. spawn 分发循环。 ——
@@ -456,9 +445,7 @@ impl App {
         // `send().await` 也绝不会死锁。随后我们 drop 自己的 sender,这样事件源退出后通道照样关闭。
         // 重连不会再发 Ready(每次 `run_with` resolve_self_id 只跑一次)。
         if self_id.0 != 0 {
-            let _ = tx
-                .send(Event::Meta(nagisa_types::event::Meta::Ready { self_id, nickname }))
-                .await;
+            let _ = tx.send(Event::Meta(nagisa_types::event::Meta::Ready { self_id, nickname })).await;
         }
         drop(tx);
 
@@ -478,9 +465,7 @@ impl App {
             }
             bus.insert(bot.clone()); // 让 service 能 bus.get::<Bot>()
             let svc_shutdown = shutdown.clone();
-            tasks.spawn(async move {
-                supervisor.run(svc_shutdown).await
-            });
+            tasks.spawn(async move { supervisor.run(svc_shutdown).await });
         }
 
         // —— 5. 在一个尊重 shutdown 的 select 下 join 所有任务。 ——
@@ -513,9 +498,7 @@ async fn resolve_self_id(
             }
         }
     }
-    tracing::warn!(
-        "could not resolve bot self_id via get_login_info; mention matching will be inert until reconnect"
-    );
+    tracing::warn!("could not resolve bot self_id via get_login_info; mention matching will be inert until reconnect");
     (Uin(0), String::new())
 }
 

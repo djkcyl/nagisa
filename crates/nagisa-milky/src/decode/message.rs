@@ -15,20 +15,13 @@ fn scene_to_nagi(scene: MessageScene) -> Scene {
 pub(super) fn decode_message(msg: IncomingMessage, self_id: Uin, _time: i64, raw: Value) -> MessageEvent {
     let base = msg.base();
     let scene = scene_to_nagi(base.message_scene);
-    let peer = Peer {
-        scene,
-        id: Uin(base.peer_id),
-    };
+    let peer = Peer { scene, id: Uin(base.peer_id) };
     let id = MessageId::from_seq(peer, base.message_seq);
     let sender = Uin(base.sender_id);
     let content = decode_segments(&base.segments, peer);
     let is_self = sender == self_id;
     let (group, member, friend) = match &msg {
-        IncomingMessage::Group(g) => (
-            Some(group_info(&g.group)),
-            Some(member_info(&g.group_member)),
-            None,
-        ),
+        IncomingMessage::Group(g) => (Some(group_info(&g.group)), Some(member_info(&g.group_member)), None),
         IncomingMessage::Temp(t) => (t.group.as_ref().map(group_info), None, None),
         // friend scene:透出每条消息自带的 FriendEntity(nickname/remark/sex/qid/category)。
         IncomingMessage::Friend(f) => (None, None, Some(friend_info(&f.friend))),
@@ -65,14 +58,9 @@ pub fn message_event_from_incoming(msg: IncomingMessage, self_id: Uin, raw: Valu
 /// （peer 仅用于 Reply 的 MessageId 构造）。
 /// OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/api/message.ts (get_forwarded_messages)
 pub fn forward_node_from_value(data: &Value) -> nagisa_types::segment::ForwardNode {
-    let peer = Peer {
-        scene: Scene::Group,
-        id: Uin(0),
-    };
-    let segments: Vec<IncomingSegment> = data
-        .get("segments")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
+    let peer = Peer { scene: Scene::Group, id: Uin(0) };
+    let segments: Vec<IncomingSegment> =
+        data.get("segments").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
     nagisa_types::segment::ForwardNode {
         // IR 的转发节点不带发送者 uin（只有 sender_name），故恒为 0 哨兵。
         user: Uin(0),

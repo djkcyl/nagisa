@@ -138,8 +138,7 @@ pub fn skip_words(text: &str, k: usize) -> String {
 
 /// 由 `#[derive(Args)]` 生成。把 token 流(+ 原始文本,供 `#[arg(rest, raw)]` 保真)解析为 `Self`。
 pub trait ParseArgs: Sized {
-    fn parse_args(tokens: &[ArgToken<'_>], raw_text: &str)
-        -> std::result::Result<Self, ArgError>;
+    fn parse_args(tokens: &[ArgToken<'_>], raw_text: &str) -> std::result::Result<Self, ArgError>;
 }
 
 /// 参数角色,决定 help 里的写法(旗标 `[-a]` / 选项 `[-r 值]` / 位置 `<名>` 等)。
@@ -200,8 +199,7 @@ impl<T: ParseArgs + Send> FromContext for Args<T> {
             Err(e) => {
                 // 显式 `#[command(usage="…")]` 串优先于 dev 自动 hint;
                 // 共享同一 parse-miss 策略(Args / Slots / usage= 三处同源)。
-                let usage =
-                    ctx.get_ext::<crate::matcher::CommandUsage>().map(|crate::matcher::CommandUsage(u)| u);
+                let usage = ctx.get_ext::<crate::matcher::CommandUsage>().map(|crate::matcher::CommandUsage(u)| u);
                 on_parse_miss(ctx, &parsed.command, &e, usage.as_deref()).await;
                 Err(Reject::Skip)
             }

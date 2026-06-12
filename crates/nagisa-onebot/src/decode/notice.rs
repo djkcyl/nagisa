@@ -11,22 +11,14 @@ pub(super) fn decode_notice(ev: RawEventJson) -> Event {
     let notice = match nt.as_str() {
         "group_recall" => Notice::Recall {
             peer: Peer::group(group.0),
-            id: MessageId {
-                peer: Peer::group(group.0),
-                seq: 0,
-                onebot_id: ev.message_id,
-            },
+            id: MessageId { peer: Peer::group(group.0), seq: 0, onebot_id: ev.message_id },
             sender: user,
             operator,
             suffix: ev.extra.get("tip").and_then(|v| v.as_str()).map(String::from),
         },
         "friend_recall" => Notice::Recall {
             peer: Peer::friend(user.0),
-            id: MessageId {
-                peer: Peer::friend(user.0),
-                seq: 0,
-                onebot_id: ev.message_id,
-            },
+            id: MessageId { peer: Peer::friend(user.0), seq: 0, onebot_id: ev.message_id },
             sender: user,
             operator: user,
             suffix: ev.extra.get("tip").and_then(|v| v.as_str()).map(String::from),
@@ -35,11 +27,7 @@ pub(super) fn decode_notice(ev: RawEventJson) -> Event {
             group,
             user,
             operator: ev.operator_id.map(Uin),
-            invitor: if ev.sub_type.as_deref() == Some("invite") {
-                ev.operator_id.map(Uin)
-            } else {
-                None
-            },
+            invitor: if ev.sub_type.as_deref() == Some("invite") { ev.operator_id.map(Uin) } else { None },
         },
         "group_decrease" => Notice::MemberDecrease {
             group,
@@ -57,12 +45,9 @@ pub(super) fn decode_notice(ev: RawEventJson) -> Event {
                 _ => MemberDecreaseReason::Unknown,
             },
         },
-        "group_admin" => Notice::AdminChange {
-            group,
-            user,
-            operator: None,
-            is_set: ev.sub_type.as_deref() == Some("set"),
-        },
+        "group_admin" => {
+            Notice::AdminChange { group, user, operator: None, is_set: ev.sub_type.as_deref() == Some("set") }
+        }
         "group_ban" => {
             // OneBot 重载:user_id == 0 表示全群禁言。
             if ev.user_id.unwrap_or(0) == 0 {
@@ -70,23 +55,15 @@ pub(super) fn decode_notice(ev: RawEventJson) -> Event {
                     group,
                     operator,
                     // 看 sub_type ban / lift_ban,或 duration 的正负。
-                    is_mute: ev.sub_type.as_deref() != Some("lift_ban")
-                        && ev.duration.unwrap_or(0) != 0,
+                    is_mute: ev.sub_type.as_deref() != Some("lift_ban") && ev.duration.unwrap_or(0) != 0,
                 }
             } else {
-                Notice::Mute {
-                    group,
-                    user,
-                    operator,
-                    duration: ev.duration.unwrap_or(0) as i32,
-                }
+                Notice::Mute { group, user, operator, duration: ev.duration.unwrap_or(0) as i32 }
             }
         }
-        "group_name_change" => Notice::GroupNameChange {
-            group,
-            new_name: ev.name.clone().unwrap_or_default(),
-            operator,
-        },
+        "group_name_change" => {
+            Notice::GroupNameChange { group, new_name: ev.name.clone().unwrap_or_default(), operator }
+        }
         "group_upload" => {
             let f = ev.file.clone().unwrap_or_default();
             Notice::GroupFileUpload {
@@ -211,10 +188,7 @@ pub(super) fn decode_notice(ev: RawEventJson) -> Event {
                 .map(|a| {
                     a.iter()
                         .map(|like| EmojiLike {
-                            face_id: like
-                                .get("emoji_id")
-                                .and_then(value_as_string)
-                                .unwrap_or_default(),
+                            face_id: like.get("emoji_id").and_then(value_as_string).unwrap_or_default(),
                             count: like.get("count").and_then(Value::as_i64),
                         })
                         .collect()
@@ -352,10 +326,9 @@ fn decode_notify(ev: RawEventJson) -> Event {
         }),
         // ENDPOINT: LLOneBot（poke_recall notice）。
         // notify + sub_type=poke_recall:戳一戳被撤回。群场景带 group_id。
-        Some("poke_recall") => Event::Notice(Notice::PokeRecall {
-            group: ev.group_id.map(Uin),
-            user: Uin(ev.user_id.unwrap_or(0)),
-        }),
+        Some("poke_recall") => {
+            Event::Notice(Notice::PokeRecall { group: ev.group_id.map(Uin), user: Uin(ev.user_id.unwrap_or(0)) })
+        }
         _ => raw_event(&ev, "notify"),
     }
 }

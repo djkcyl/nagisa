@@ -43,10 +43,9 @@ pub(crate) fn tokenize(lang: &str, src: &str) -> Vec<(Range<usize>, TokenKind)> 
 // ── 各语言扫描器 ──
 
 const RUST_KW: &[&str] = &[
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-    "extern", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut",
-    "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait", "type",
-    "union", "unsafe", "use", "where", "while",
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "fn", "for", "if",
+    "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static",
+    "struct", "super", "trait", "type", "union", "unsafe", "use", "where", "while",
 ];
 
 /// Rust:行/嵌套块注释、字符串与原始字符串(r#"…"#,井号可多,b/br 前缀同)、
@@ -138,9 +137,7 @@ fn tokenize_json(src: &str) -> Vec<(Range<usize>, TokenKind)> {
                 out.push((i..end, TokenKind::Comment));
                 i = end;
             }
-            c if c.is_ascii_digit()
-                || (c == b'-' && b.get(i + 1).is_some_and(u8::is_ascii_digit)) =>
-            {
+            c if c.is_ascii_digit() || (c == b'-' && b.get(i + 1).is_some_and(u8::is_ascii_digit)) => {
                 let end = scan_code_number(b, if c == b'-' { i + 1 } else { i }).max(i + 1);
                 out.push((i..end, TokenKind::Literal));
                 i = end;
@@ -202,10 +199,9 @@ fn tokenize_toml(src: &str) -> Vec<(Range<usize>, TokenKind)> {
 }
 
 const PY_KW: &[&str] = &[
-    "and", "as", "assert", "async", "await", "break", "case", "class", "continue", "def",
-    "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in",
-    "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return", "try",
-    "while", "with", "yield",
+    "and", "as", "assert", "async", "await", "break", "case", "class", "continue", "def", "del", "elif", "else",
+    "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "match", "nonlocal", "not",
+    "or", "pass", "raise", "return", "try", "while", "with", "yield",
 ];
 
 /// Python:# 注释、单双引号与三引号字符串(r/b/f/u 前缀,可组合两枚)、数字、
@@ -254,12 +250,59 @@ fn tokenize_python(src: &str) -> Vec<(Range<usize>, TokenKind)> {
 }
 
 const JS_KW: &[&str] = &[
-    "abstract", "as", "async", "await", "break", "case", "catch", "class", "const",
-    "continue", "debugger", "declare", "default", "delete", "do", "else", "enum", "export",
-    "extends", "finally", "for", "from", "function", "if", "implements", "import", "in",
-    "instanceof", "interface", "keyof", "let", "namespace", "new", "of", "private",
-    "protected", "public", "readonly", "return", "satisfies", "static", "super", "switch",
-    "this", "throw", "try", "type", "typeof", "var", "void", "while", "with", "yield",
+    "abstract",
+    "as",
+    "async",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "declare",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "finally",
+    "for",
+    "from",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "keyof",
+    "let",
+    "namespace",
+    "new",
+    "of",
+    "private",
+    "protected",
+    "public",
+    "readonly",
+    "return",
+    "satisfies",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "try",
+    "type",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
 ];
 
 /// JS / TS:行/块注释、单双引号与模板字符串(整段按字符串,`${}` 不递归)、数字
@@ -301,8 +344,8 @@ fn tokenize_javascript(src: &str) -> Vec<(Range<usize>, TokenKind)> {
 }
 
 const SH_KW: &[&str] = &[
-    "case", "do", "done", "elif", "else", "esac", "export", "fi", "for", "function", "if",
-    "in", "local", "readonly", "return", "select", "then", "until", "while",
+    "case", "do", "done", "elif", "else", "esac", "export", "fi", "for", "function", "if", "in", "local", "readonly",
+    "return", "select", "then", "until", "while",
 ];
 
 /// Shell(bash/sh):# 注释(`$#` 与 `${#var}` 不是注释)、单引号(无转义)与
@@ -339,13 +382,62 @@ fn tokenize_shell(src: &str) -> Vec<(Range<usize>, TokenKind)> {
 }
 
 const C_KW: &[&str] = &[
-    "auto", "bool", "break", "case", "catch", "char", "class", "const", "constexpr",
-    "continue", "decltype", "default", "delete", "do", "double", "else", "enum", "explicit",
-    "extern", "final", "float", "for", "friend", "goto", "if", "inline", "int", "long",
-    "mutable", "namespace", "new", "noexcept", "operator", "override", "private",
-    "protected", "public", "return", "short", "signed", "sizeof", "static", "struct",
-    "switch", "template", "this", "throw", "try", "typedef", "typename", "unsigned",
-    "using", "virtual", "void", "volatile", "while",
+    "auto",
+    "bool",
+    "break",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "constexpr",
+    "continue",
+    "decltype",
+    "default",
+    "delete",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "explicit",
+    "extern",
+    "final",
+    "float",
+    "for",
+    "friend",
+    "goto",
+    "if",
+    "inline",
+    "int",
+    "long",
+    "mutable",
+    "namespace",
+    "new",
+    "noexcept",
+    "operator",
+    "override",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "short",
+    "signed",
+    "sizeof",
+    "static",
+    "struct",
+    "switch",
+    "template",
+    "this",
+    "throw",
+    "try",
+    "typedef",
+    "typename",
+    "unsigned",
+    "using",
+    "virtual",
+    "void",
+    "volatile",
+    "while",
 ];
 
 /// C / C++:行/块注释、字符串与字符字面量、数字(含 0x 与 u/l/f 后缀)、关键字、

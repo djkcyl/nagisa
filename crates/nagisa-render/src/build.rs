@@ -16,9 +16,9 @@
 use std::path::PathBuf;
 
 use crate::model::{
-    Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document,
-    FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind,
-    Panel, PanelDecor, Progress, Shadow, Table, TableStyle, TextStyle, Watermark,
+    Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document, FontRole, Highlight,
+    ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind, Panel, PanelDecor, Progress, Shadow, Table,
+    TableStyle, TextStyle, Watermark,
 };
 
 /// 文档 / 块序列构建器。也用作引用、列表项的内层块容器。
@@ -42,11 +42,7 @@ impl Doc {
     pub fn heading<R>(&mut self, level: u8, f: impl FnOnce(&mut ParaBuilder) -> R) -> &mut Self {
         let mut pb = ParaBuilder::new();
         let _ = f(&mut pb);
-        self.blocks.push(Block::Heading {
-            level: level.clamp(1, 6),
-            inlines: pb.inlines,
-            align: pb.align,
-        });
+        self.blocks.push(Block::Heading { level: level.clamp(1, 6), inlines: pb.inlines, align: pb.align });
         self
     }
 
@@ -84,10 +80,7 @@ impl Doc {
     /// 代码块。`lang` 空串 = 无语言标签。
     pub fn code(&mut self, lang: impl Into<String>, text: impl Into<String>) -> &mut Self {
         let lang = lang.into();
-        self.blocks.push(Block::Code {
-            lang: if lang.is_empty() { None } else { Some(lang) },
-            text: text.into(),
-        });
+        self.blocks.push(Block::Code { lang: if lang.is_empty() { None } else { Some(lang) }, text: text.into() });
         self
     }
 
@@ -117,19 +110,9 @@ impl Doc {
 
     /// 表格:闭包里用 `.head([..])` / `.row([..])` / `.align([..])` / `.width(列, 长)`。
     pub fn table<R>(&mut self, f: impl FnOnce(&mut TableBuilder) -> R) -> &mut Self {
-        let mut tb = TableBuilder {
-            header: None,
-            rows: Vec::new(),
-            cols: Vec::new(),
-            style: TableStyle::default(),
-        };
+        let mut tb = TableBuilder { header: None, rows: Vec::new(), cols: Vec::new(), style: TableStyle::default() };
         let _ = f(&mut tb);
-        self.blocks.push(Block::Table(Table {
-            header: tb.header,
-            rows: tb.rows,
-            cols: tb.cols,
-            style: tb.style,
-        }));
+        self.blocks.push(Block::Table(Table { header: tb.header, rows: tb.rows, cols: tb.cols, style: tb.style }));
         self
     }
 
@@ -138,15 +121,7 @@ impl Doc {
     /// `.width_percent(..)` / `.align(..)`),全缺省即「铺满内容宽的胶囊条,主题强调色」。
     pub fn progress<R>(&mut self, value: f32, f: impl FnOnce(&mut ProgressBuilder) -> R) -> &mut Self {
         let mut pb = ProgressBuilder {
-            p: Progress {
-                value,
-                height: 10.0,
-                fill: None,
-                track: None,
-                radius: None,
-                width: None,
-                align: Align::Left,
-            },
+            p: Progress { value, height: 10.0, fill: None, track: None, radius: None, width: None, align: Align::Left },
         };
         let _ = f(&mut pb);
         self.blocks.push(Block::Progress(pb.p));
@@ -154,34 +129,17 @@ impl Doc {
     }
 
     /// 块级图(字节来源)。
-    pub fn image_bytes<R>(
-        &mut self,
-        bytes: Vec<u8>,
-        f: impl FnOnce(&mut ImageBuilder) -> R,
-    ) -> &mut Self {
+    pub fn image_bytes<R>(&mut self, bytes: Vec<u8>, f: impl FnOnce(&mut ImageBuilder) -> R) -> &mut Self {
         self.push_block_image(ImageSource::Bytes(bytes), f)
     }
 
     /// 块级图(磁盘路径)。
-    pub fn image_path<R>(
-        &mut self,
-        path: impl Into<PathBuf>,
-        f: impl FnOnce(&mut ImageBuilder) -> R,
-    ) -> &mut Self {
+    pub fn image_path<R>(&mut self, path: impl Into<PathBuf>, f: impl FnOnce(&mut ImageBuilder) -> R) -> &mut Self {
         self.push_block_image(ImageSource::Path(path.into()), f)
     }
 
-    fn push_block_image<R>(
-        &mut self,
-        src: ImageSource,
-        f: impl FnOnce(&mut ImageBuilder) -> R,
-    ) -> &mut Self {
-        let mut ib = ImageBuilder {
-            width: None,
-            align: Align::Left,
-            caption: None,
-            decor: ImageDecor::default(),
-        };
+    fn push_block_image<R>(&mut self, src: ImageSource, f: impl FnOnce(&mut ImageBuilder) -> R) -> &mut Self {
+        let mut ib = ImageBuilder { width: None, align: Align::Left, caption: None, decor: ImageDecor::default() };
         let _ = f(&mut ib);
         self.blocks.push(Block::Image(BlockImage {
             src,
@@ -265,11 +223,7 @@ impl ParaBuilder {
     }
 
     /// 任意样式文字:闭包里配置 [`StyleBuilder`]。
-    pub fn styled<R>(
-        &mut self,
-        s: impl Into<String>,
-        f: impl FnOnce(&mut StyleBuilder) -> R,
-    ) -> &mut Self {
+    pub fn styled<R>(&mut self, s: impl Into<String>, f: impl FnOnce(&mut StyleBuilder) -> R) -> &mut Self {
         let mut sb = StyleBuilder { style: TextStyle::default() };
         let _ = f(&mut sb);
         self.push(s, sb.style)
@@ -532,12 +486,7 @@ impl TableBuilder {
         self
     }
     /// 单格(数据行 / 列,0 起)的文字样式。
-    pub fn cell_style<R>(
-        &mut self,
-        row: usize,
-        col: usize,
-        f: impl Fn(&mut StyleBuilder) -> R,
-    ) -> &mut Self {
+    pub fn cell_style<R>(&mut self, row: usize, col: usize, f: impl Fn(&mut StyleBuilder) -> R) -> &mut Self {
         if let Some(c) = self.rows.get_mut(row).and_then(|r| r.get_mut(col)) {
             style_cell(c, &f);
         }
@@ -693,11 +642,7 @@ impl ColumnsBuilder {
         self.panel_weighted(1.0, f)
     }
     /// 一栏卡片(指定宽度权重;非法权重回退 1.0)。
-    pub fn panel_weighted<R>(
-        &mut self,
-        weight: f32,
-        f: impl FnOnce(&mut PanelBuilder) -> R,
-    ) -> &mut Self {
+    pub fn panel_weighted<R>(&mut self, weight: f32, f: impl FnOnce(&mut PanelBuilder) -> R) -> &mut Self {
         let weight = if weight.is_finite() && weight > 0.0 { weight } else { 1.0 };
         let mut pb = PanelBuilder::new();
         let _ = f(&mut pb);
@@ -892,11 +837,7 @@ impl ImageBuilder {
     // ── 装饰层:角标 / 边框 / 水印 / 圆角 / 阴影(画在图面上,不改布局尺寸) ──
 
     /// 角标(默认右上角、黑底白字),闭包微调:`im.badge("动图", |b| b.anchor(..).bg(..))`。
-    pub fn badge<R>(
-        &mut self,
-        text: impl Into<String>,
-        f: impl FnOnce(&mut BadgeBuilder) -> R,
-    ) -> &mut Self {
+    pub fn badge<R>(&mut self, text: impl Into<String>, f: impl FnOnce(&mut BadgeBuilder) -> R) -> &mut Self {
         let mut bb = BadgeBuilder { badge: Badge::new(text) };
         let _ = f(&mut bb);
         self.decor.badge = Some(bb.badge);
@@ -912,11 +853,7 @@ impl ImageBuilder {
         self
     }
     /// 水印(默认右下角、白 40%),闭包微调:`im.watermark("abot", |w| w.anchor(..))`。
-    pub fn watermark<R>(
-        &mut self,
-        text: impl Into<String>,
-        f: impl FnOnce(&mut WatermarkBuilder) -> R,
-    ) -> &mut Self {
+    pub fn watermark<R>(&mut self, text: impl Into<String>, f: impl FnOnce(&mut WatermarkBuilder) -> R) -> &mut Self {
         let mut wb = WatermarkBuilder { wm: Watermark::new(text) };
         let _ = f(&mut wb);
         self.decor.watermark = Some(wb.wm);
@@ -1003,4 +940,3 @@ impl WatermarkBuilder {
         self
     }
 }
-

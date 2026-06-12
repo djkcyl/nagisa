@@ -21,10 +21,7 @@ pub fn friend_request_to_request(data: &Value) -> Request {
     let initiator = Uin(get_i64(data, "initiator_id"));
     let initiator_uid = get_str(data, "initiator_uid");
     let is_filtered = get_bool(data, "is_filtered");
-    let token = Token(RequestTokenInner::MilkyFriend {
-        initiator_uid: initiator_uid.clone(),
-        is_filtered,
-    });
+    let token = Token(RequestTokenInner::MilkyFriend { initiator_uid: initiator_uid.clone(), is_filtered });
     Request::Friend {
         initiator,
         initiator_uid: (!initiator_uid.is_empty()).then_some(initiator_uid),
@@ -130,24 +127,21 @@ pub fn notification_to_notice(data: &Value, notification_type: &str) -> Option<N
         "admin_change" => Some(Notice::AdminChange {
             group,
             // 被设/撤管理者用 `target_user_id`，回退 `user_id`（IR 字段命名差异容错）。
-            user: Uin(get_opt_i64(data, "target_user_id")
-                .unwrap_or_else(|| get_i64(data, "user_id"))),
+            user: Uin(get_opt_i64(data, "target_user_id").unwrap_or_else(|| get_i64(data, "user_id"))),
             operator: get_opt_i64(data, "operator_id").map(Uin),
             is_set: get_bool(data, "is_set"),
         }),
         "kick" => Some(Notice::MemberDecrease {
             group,
             // kick 变体的被踢者用 `target_user_id`，回退 `user_id`（IR 字段命名差异容错）。
-            user: Uin(get_opt_i64(data, "target_user_id")
-                .unwrap_or_else(|| get_i64(data, "user_id"))),
+            user: Uin(get_opt_i64(data, "target_user_id").unwrap_or_else(|| get_i64(data, "user_id"))),
             operator: get_opt_i64(data, "operator_id").map(Uin),
             reason: MemberDecreaseReason::Kick,
         }),
         "quit" => Some(Notice::MemberDecrease {
             group,
             // 主动退群者用 `target_user_id`，回退 `user_id`（IR 字段命名差异容错）。
-            user: Uin(get_opt_i64(data, "target_user_id")
-                .unwrap_or_else(|| get_i64(data, "user_id"))),
+            user: Uin(get_opt_i64(data, "target_user_id").unwrap_or_else(|| get_i64(data, "user_id"))),
             // 主动退群无操作者。
             operator: None,
             reason: MemberDecreaseReason::Leave,
@@ -160,10 +154,7 @@ pub fn notification_to_notice(data: &Value, notification_type: &str) -> Option<N
 pub(super) fn decode_group_invitation(data: &Value) -> Option<Request> {
     let group = Uin(get_i64(data, "group_id"));
     let invitation_seq = get_i64(data, "invitation_seq");
-    let token = Token(RequestTokenInner::MilkyInvitation {
-        group_id: group,
-        invitation_seq,
-    });
+    let token = Token(RequestTokenInner::MilkyInvitation { group_id: group, invitation_seq });
     Some(Request::GroupInvite {
         group,
         initiator: Uin(get_i64(data, "initiator_id")),

@@ -55,12 +55,7 @@ impl Parse for PluginArgs {
                 "default_enable" => out.default_enable = Some(entry.value.expect_bool(&entry.key)?),
                 "hidden" => out.hidden = Some(entry.value.expect_bool(&entry.key)?),
                 "maintain" => out.maintain = Some(entry.value.expect_bool(&entry.key)?),
-                other => {
-                    return Err(Error::new(
-                        entry.key.span(),
-                        format!("unknown plugin field `{other}`"),
-                    ))
-                }
+                other => return Err(Error::new(entry.key.span(), format!("unknown plugin field `{other}`"))),
             }
         }
         Ok(out)
@@ -112,10 +107,7 @@ impl PluginValue {
     fn expect_ident(self, id: &Ident) -> syn::Result<Ident> {
         match self {
             PluginValue::Ident(i) => Ok(i),
-            _ => Err(Error::new(
-                id.span(),
-                format!("`{id}` expects a bare category identifier (e.g. `Fun`)"),
-            )),
+            _ => Err(Error::new(id.span(), format!("`{id}` expects a bare category identifier (e.g. `Fun`)"))),
         }
     }
 }

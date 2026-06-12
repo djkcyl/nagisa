@@ -22,8 +22,7 @@ pub fn log_wire(dir: &'static str, frame: &str) {
 /// 两适配器出站把媒体字节拼成 `base64://…` URI 时共用此实现(原来 milky / onebot 各手写一份
 /// 逐字节同逻辑)。标准 RFC 4648 alphabet,每 3 字节 → 4 个 base64 字符,不足 3 字节补 `=`。
 pub fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
@@ -73,11 +72,7 @@ where
     if env.status == "ok" && env.retcode == 0 {
         Ok(env.data.unwrap_or(serde_json::Value::Null))
     } else {
-        Err(Error::Action {
-            retcode: env.retcode,
-            message: env.message.unwrap_or_default(),
-            kind: env.classify,
-        })
+        Err(Error::Action { retcode: env.retcode, message: env.message.unwrap_or_default(), kind: env.classify })
     }
 }
 

@@ -75,18 +75,17 @@ mod paint;
 mod theme;
 
 pub use build::{
-    BadgeBuilder, ColumnsBuilder, Doc, ImageBuilder, ListBuilder, PanelBuilder, ParaBuilder,
-    ProgressBuilder, StyleBuilder, TableBuilder, WatermarkBuilder,
+    BadgeBuilder, ColumnsBuilder, Doc, ImageBuilder, ListBuilder, PanelBuilder, ParaBuilder, ProgressBuilder,
+    StyleBuilder, TableBuilder, WatermarkBuilder,
 };
 pub use error::{Error, Result};
 pub use font::FontHandle;
 pub use markup::parse as parse_markup;
 pub use model::ImageSource;
 pub use model::{
-    Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document,
-    DotMark, FontRole, Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem,
-    ListKind, Panel, PanelDecor, Progress, RingMark, Shadow, Table, TableGrid, TableStyle,
-    TextStyle, Watermark,
+    Align, Anchor, Badge, Block, BlockImage, Cell, ColSpec, Color, Column, Columns, Document, DotMark, FontRole,
+    Highlight, ImageBorder, ImageDecor, Inline, Length, List, ListItem, ListKind, Panel, PanelDecor, Progress,
+    RingMark, Shadow, Table, TableGrid, TableStyle, TextStyle, Watermark,
 };
 pub use theme::{CodePalette, Insets, OutputFormat, PageChrome, RenderOptions, Theme};
 

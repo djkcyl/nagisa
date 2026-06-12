@@ -155,7 +155,12 @@ impl Router {
         Args: 'static,
     {
         let cmd = TriggerControl {
-            plugin_key, trigger_key, plugin_default, plugin_can_disable, trigger_default, trigger_can_disable,
+            plugin_key,
+            trigger_key,
+            plugin_default,
+            plugin_can_disable,
+            trigger_default,
+            trigger_can_disable,
         };
         self.register_full(h, priority, Some(matcher), gate, Some(cmd), None, top)
     }
@@ -168,24 +173,35 @@ impl Router {
     /// （共享 MetaArgs 解析）；无 gate/cooldown 时传 `None`。
     #[allow(clippy::too_many_arguments)]
     pub fn event_named<H, Args>(
-        self, plugin_key: &'static str, trigger_key: &'static str,
-        plugin_default: bool, plugin_can_disable: bool,
-        trigger_default: bool, trigger_can_disable: bool,
-        top: bool, priority: i32, kind: crate::event_trigger::EventKind,
-        gate: Option<Rule>, h: H,
+        self,
+        plugin_key: &'static str,
+        trigger_key: &'static str,
+        plugin_default: bool,
+        plugin_can_disable: bool,
+        trigger_default: bool,
+        trigger_can_disable: bool,
+        top: bool,
+        priority: i32,
+        kind: crate::event_trigger::EventKind,
+        gate: Option<Rule>,
+        h: H,
     ) -> Self
-    where H: Handler<Args>, Args: 'static {
-        let cmd = TriggerControl { plugin_key, trigger_key, plugin_default, plugin_can_disable, trigger_default, trigger_can_disable };
+    where
+        H: Handler<Args>,
+        Args: 'static,
+    {
+        let cmd = TriggerControl {
+            plugin_key,
+            trigger_key,
+            plugin_default,
+            plugin_can_disable,
+            trigger_default,
+            trigger_can_disable,
+        };
         self.register_full(h, priority, None, gate, Some(cmd), Some(kind), top)
     }
 
-    fn register<H, Args>(
-        self,
-        h: H,
-        priority: i32,
-        matcher: Option<Matcher>,
-        gate: Option<Rule>,
-    ) -> Self
+    fn register<H, Args>(self, h: H, priority: i32, matcher: Option<Matcher>, gate: Option<Rule>) -> Self
     where
         H: Handler<Args>,
         Args: 'static,
@@ -208,9 +224,7 @@ impl Router {
         H: Handler<Args>,
         Args: 'static,
     {
-        self.handlers.push(Registered {
-            handler: h.erased(), priority, matcher, gate, cmd, event_kind, top,
-        });
+        self.handlers.push(Registered { handler: h.erased(), priority, matcher, gate, cmd, event_kind, top });
         // 注册时稳定排序（同优先级保持注册顺序），分发时直接遍历。
         self.handlers.sort_by_key(|r| r.priority);
         self
@@ -418,16 +432,25 @@ impl Router {
 
 fn command_enabled(ctx: &Ctx, cmd: &TriggerControl) -> bool {
     let peer = ctx.event().peer();
-    match ctx.state().get(&TypeId::of::<crate::enabled::EnabledSet>())
+    match ctx
+        .state()
+        .get(&TypeId::of::<crate::enabled::EnabledSet>())
         .and_then(|a| a.downcast_ref::<crate::enabled::EnabledSet>())
     {
         Some(es) => es.is_enabled_keyed(
-            cmd.plugin_key, cmd.trigger_key, cmd.plugin_default, cmd.plugin_can_disable,
-            cmd.trigger_default, cmd.trigger_can_disable, peer,
+            cmd.plugin_key,
+            cmd.trigger_key,
+            cmd.plugin_default,
+            cmd.plugin_can_disable,
+            cmd.trigger_default,
+            cmd.trigger_can_disable,
+            peer,
         ),
         None => {
             // 无 EnabledSet:退回「默认开,除非某个 default 为 false」。
-            if !cmd.trigger_can_disable { return true; }
+            if !cmd.trigger_can_disable {
+                return true;
+            }
             cmd.plugin_default && cmd.trigger_default
         }
     }

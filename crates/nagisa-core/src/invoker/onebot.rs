@@ -107,19 +107,11 @@ pub trait OneBotActions: Send + Sync + 'static {
     /// 发送群合并转发（独立动作；与 `send(Forward::Nodes)` 等效，提供显式入口）。
     /// 返回 [`ForwardSendResult`]：消息 `message_id` + Lagrange 合并转发引用
     /// `forward_id`(resId，端未回传则 `None`)。
-    async fn send_group_forward(
-        &self,
-        _group: Uin,
-        _nodes: &[ForwardNode],
-    ) -> Result<ForwardSendResult> {
+    async fn send_group_forward(&self, _group: Uin, _nodes: &[ForwardNode]) -> Result<ForwardSendResult> {
         Err(unsupported("send_group_forward_msg"))
     }
     /// 发送私聊合并转发。返回 [`ForwardSendResult`]（含 `forward_id`/resId）。
-    async fn send_private_forward(
-        &self,
-        _user: Uin,
-        _nodes: &[ForwardNode],
-    ) -> Result<ForwardSendResult> {
+    async fn send_private_forward(&self, _user: Uin, _nodes: &[ForwardNode]) -> Result<ForwardSendResult> {
         Err(unsupported("send_private_forward_msg"))
     }
     /// 发送场景无关的合并转发（Lagrange `send_forward_msg`）。返回 [`ForwardSendResult`]
@@ -141,13 +133,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 用指定 AI 音色把文字合成为语音，返回录音文件 URL（不发送）。
-    async fn get_ai_record(
-        &self,
-        _group: Uin,
-        _character: &str,
-        _text: &str,
-        _chat_type: &str,
-    ) -> Result<String> {
+    async fn get_ai_record(&self, _group: Uin, _character: &str, _text: &str, _chat_type: &str) -> Result<String> {
         Err(unsupported("get_ai_record"))
     }
 
@@ -163,12 +149,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 设置账号在线状态（`status`/`ext_status`/`battery_status`）。
-    async fn set_online_status(
-        &self,
-        _status: i32,
-        _ext_status: i32,
-        _battery_status: i32,
-    ) -> Result<()> {
+    async fn set_online_status(&self, _status: i32, _ext_status: i32, _battery_status: i32) -> Result<()> {
         Err(unsupported("set_online_status"))
     }
 
@@ -267,12 +248,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     // 来源：NapNeko/NapCatQQ `packages/napcat-onebot/action/router.ts` 的 ActionName 映射。
 
     /// 设置自定义在线状态（自定义表情 + 文字）。
-    async fn set_diy_online_status(
-        &self,
-        _face_id: i32,
-        _face_type: i32,
-        _wording: &str,
-    ) -> Result<()> {
+    async fn set_diy_online_status(&self, _face_id: i32, _face_type: i32, _wording: &str) -> Result<()> {
         Err(unsupported("set_diy_online_status"))
     }
 
@@ -298,12 +274,7 @@ pub trait OneBotActions: Send + Sync + 'static {
 
     /// 批量踢出多名群成员。`reject_add`=是否同时拒绝其再次加群。
     /// 注意：LLOneBot 用 `batch_delete_group_member`，故此动作归 NapCat 私有。
-    async fn set_group_kick_members(
-        &self,
-        _group: Uin,
-        _users: &[Uin],
-        _reject_add: bool,
-    ) -> Result<()> {
+    async fn set_group_kick_members(&self, _group: Uin, _users: &[Uin], _reject_add: bool) -> Result<()> {
         Err(unsupported("set_group_kick_members"))
     }
 
@@ -412,12 +383,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 删除群相册中的一条媒体（`lloc` 为媒体 ID）。
-    async fn del_group_album_media(
-        &self,
-        _group: Uin,
-        _album_id: &str,
-        _lloc: &str,
-    ) -> Result<()> {
+    async fn del_group_album_media(&self, _group: Uin, _album_id: &str, _lloc: &str) -> Result<()> {
         Err(unsupported("del_group_album_media"))
     }
 
@@ -433,13 +399,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 发表群相册评论。
-    async fn do_group_album_comment(
-        &self,
-        _group: Uin,
-        _album_id: &str,
-        _lloc: &str,
-        _content: &str,
-    ) -> Result<Value> {
+    async fn do_group_album_comment(&self, _group: Uin, _album_id: &str, _lloc: &str, _content: &str) -> Result<Value> {
         Err(unsupported("do_group_album_comment"))
     }
 
@@ -454,12 +414,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 发送闪传消息（把一个 fileset 以闪传卡片发给好友 / 群）。
-    async fn send_flash_msg(
-        &self,
-        _fileset_id: &str,
-        _user: Option<Uin>,
-        _group: Option<Uin>,
-    ) -> Result<Value> {
+    async fn send_flash_msg(&self, _fileset_id: &str, _user: Option<Uin>, _group: Option<Uin>) -> Result<Value> {
         Err(unsupported("send_flash_msg"))
     }
 
@@ -499,22 +454,12 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 向好友发送在线文件。
-    async fn send_online_file(
-        &self,
-        _user: Uin,
-        _file_path: &str,
-        _file_name: Option<&str>,
-    ) -> Result<Value> {
+    async fn send_online_file(&self, _user: Uin, _file_path: &str, _file_name: Option<&str>) -> Result<Value> {
         Err(unsupported("send_online_file"))
     }
 
     /// 向好友发送在线文件夹。
-    async fn send_online_folder(
-        &self,
-        _user: Uin,
-        _folder_path: &str,
-        _folder_name: Option<&str>,
-    ) -> Result<Value> {
+    async fn send_online_folder(&self, _user: Uin, _folder_path: &str, _folder_name: Option<&str>) -> Result<Value> {
         Err(unsupported("send_online_folder"))
     }
 
@@ -524,22 +469,12 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 接收一条在线文件。
-    async fn receive_online_file(
-        &self,
-        _user: Uin,
-        _msg_id: &str,
-        _element_id: &str,
-    ) -> Result<Value> {
+    async fn receive_online_file(&self, _user: Uin, _msg_id: &str, _element_id: &str) -> Result<Value> {
         Err(unsupported("receive_online_file"))
     }
 
     /// 拒绝一条在线文件。
-    async fn refuse_online_file(
-        &self,
-        _user: Uin,
-        _msg_id: &str,
-        _element_id: &str,
-    ) -> Result<()> {
+    async fn refuse_online_file(&self, _user: Uin, _msg_id: &str, _element_id: &str) -> Result<()> {
         Err(unsupported("refuse_online_file"))
     }
 
@@ -607,13 +542,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     /// 获取一条消息上某个表情回应的点赞者列表（`fetch_emoji_like` 的变体，字段命名更贴近
     /// OneBot 风格）。实测**仅 NapCat** 注册此 wire 名（LLOneBot 只有 `fetch_emoji_like`），
     /// 故为单厂商私有 → 归 NapCat 专属。
-    async fn get_emoji_likes(
-        &self,
-        _msg: &MessageId,
-        _emoji_id: &str,
-        _emoji_type: i32,
-        _count: u32,
-    ) -> Result<Value> {
+    async fn get_emoji_likes(&self, _msg: &MessageId, _emoji_id: &str, _emoji_type: i32, _count: u32) -> Result<Value> {
         Err(unsupported("get_emoji_likes"))
     }
 
@@ -633,13 +562,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 设置自定义表情描述。
-    async fn set_custom_face_desc(
-        &self,
-        _emoji_id: &str,
-        _res_id: &str,
-        _md5: &str,
-        _desc: &str,
-    ) -> Result<()> {
+    async fn set_custom_face_desc(&self, _emoji_id: &str, _res_id: &str, _md5: &str, _desc: &str) -> Result<()> {
         Err(unsupported("set_custom_face_desc"))
     }
 
@@ -877,12 +800,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 创建群相册。
-    async fn create_group_album(
-        &self,
-        _group: Uin,
-        _name: &str,
-        _desc: Option<&str>,
-    ) -> Result<Value> {
+    async fn create_group_album(&self, _group: Uin, _name: &str, _desc: Option<&str>) -> Result<Value> {
         Err(unsupported("create_group_album"))
     }
 
@@ -897,12 +815,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 上传媒体到群相册。
-    async fn upload_group_album(
-        &self,
-        _group: Uin,
-        _album_id: &str,
-        _files: &[String],
-    ) -> Result<Value> {
+    async fn upload_group_album(&self, _group: Uin, _album_id: &str, _files: &[String]) -> Result<Value> {
         Err(unsupported("upload_group_album"))
     }
 
@@ -912,11 +825,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 下载闪传文件集（按 `file_set_id` 或解析 `share_link`，二者至少其一）。
-    async fn download_flash_file(
-        &self,
-        _file_set_id: Option<&str>,
-        _share_link: Option<&str>,
-    ) -> Result<Value> {
+    async fn download_flash_file(&self, _file_set_id: Option<&str>, _share_link: Option<&str>) -> Result<Value> {
         Err(unsupported("download_flash_file"))
     }
 
@@ -926,11 +835,7 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 获取闪传文件集元信息（按 `file_set_id` 或解析 `share_link`，二者至少其一）。
-    async fn get_flash_file_info(
-        &self,
-        _file_set_id: Option<&str>,
-        _share_link: Option<&str>,
-    ) -> Result<Value> {
+    async fn get_flash_file_info(&self, _file_set_id: Option<&str>, _share_link: Option<&str>) -> Result<Value> {
         Err(unsupported("get_flash_file_info"))
     }
 
@@ -1001,33 +906,17 @@ pub trait OneBotActions: Send + Sync + 'static {
     }
 
     /// 触发群机器人按钮回调（inline keyboard callback）。
-    async fn send_group_bot_callback(
-        &self,
-        _group: Uin,
-        _bot_id: Uin,
-        _data_1: &str,
-        _data_2: &str,
-    ) -> Result<()> {
+    async fn send_group_bot_callback(&self, _group: Uin, _bot_id: Uin, _data_1: &str, _data_2: &str) -> Result<()> {
         Err(unsupported("send_group_bot_callback"))
     }
 
     /// 跟随好友的某条消息加入“表情接龙”。
-    async fn join_friend_emoji_chain(
-        &self,
-        _user: Uin,
-        _emoji_id: i64,
-        _msg: &MessageId,
-    ) -> Result<()> {
+    async fn join_friend_emoji_chain(&self, _user: Uin, _emoji_id: i64, _msg: &MessageId) -> Result<()> {
         Err(unsupported(".join_friend_emoji_chain"))
     }
 
     /// 跟随群内某条消息加入“表情接龙”。
-    async fn join_group_emoji_chain(
-        &self,
-        _group: Uin,
-        _emoji_id: i64,
-        _msg: &MessageId,
-    ) -> Result<()> {
+    async fn join_group_emoji_chain(&self, _group: Uin, _emoji_id: i64, _msg: &MessageId) -> Result<()> {
         Err(unsupported(".join_group_emoji_chain"))
     }
 

@@ -49,12 +49,7 @@ impl RateLimit {
     }
     /// 单个共享桶：每 `per` 窗口全局最多 `max` 个事件。
     pub fn global(max: u32, per: Duration) -> Self {
-        RateLimit {
-            scope: RateLimitScope::Global,
-            max: max as f64,
-            per,
-            buckets: Arc::new(Mutex::new(HashMap::new())),
-        }
+        RateLimit { scope: RateLimitScope::Global, max: max as f64, per, buckets: Arc::new(Mutex::new(HashMap::new())) }
     }
 
     /// 为 `peer` 消耗一个令牌。放行返回 `true`，被限流返回 `false`。

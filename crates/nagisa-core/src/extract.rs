@@ -112,9 +112,7 @@ pub struct PrivateMessage(pub MessageEvent);
 impl FromContext for PrivateMessage {
     async fn from_context(ctx: &Ctx) -> Extracted<Self> {
         match ctx.message() {
-            Some(m) if matches!(m.peer.scene, Scene::Friend | Scene::Temp) => {
-                Ok(PrivateMessage(m.clone()))
-            }
+            Some(m) if matches!(m.peer.scene, Scene::Friend | Scene::Temp) => Ok(PrivateMessage(m.clone())),
             _ => Err(Reject::Skip),
         }
     }
@@ -177,10 +175,7 @@ impl<T: Send + Sync + 'static> FromContext for State<T> {
             Some(any) => match Arc::clone(any).downcast::<T>() {
                 Ok(typed) => Ok(State(typed)),
                 // 同一 TypeId 必然同类型，downcast 不会失败；保守兜底。
-                Err(_) => Err(Reject::Error(Error::action(format!(
-                    "state type mismatch for {}",
-                    type_name::<T>()
-                )))),
+                Err(_) => Err(Reject::Error(Error::action(format!("state type mismatch for {}", type_name::<T>())))),
             },
             None => Err(Reject::Error(Error::action_kind(
                 ActionErrorKind::BadParams,
@@ -472,9 +467,8 @@ impl FromContext for ToMe {
         }
         // 群聊：首段为 @self 则 to_me。
         let self_id = ctx.bot().self_id();
-        let to_me = msg.content.first().is_some_and(|seg| {
-            matches!(seg, Segment::Mention { user, .. } if *user == self_id)
-        });
+        let to_me =
+            msg.content.first().is_some_and(|seg| matches!(seg, Segment::Mention { user, .. } if *user == self_id));
         Ok(ToMe(to_me))
     }
 }

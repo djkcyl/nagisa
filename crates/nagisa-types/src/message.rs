@@ -102,8 +102,7 @@ impl MessageExt for [Segment] {
     }
 
     fn mentions_user(&self, user: Uin) -> bool {
-        self.iter()
-            .any(|s| matches!(s, Segment::Mention { user: u, .. } if *u == user))
+        self.iter().any(|s| matches!(s, Segment::Mention { user: u, .. } if *u == user))
     }
 
     fn reply_to(&self) -> Option<&MessageId> {
@@ -129,11 +128,7 @@ impl MessageExt for [Segment] {
     }
 
     fn split_text(&self, sep: char) -> Vec<String> {
-        self.extract_text()
-            .split(sep)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect()
+        self.extract_text().split(sep).filter(|s| !s.is_empty()).map(str::to_string).collect()
     }
 
     fn strip_text_prefix(&self, prefix: &str) -> Option<Message> {

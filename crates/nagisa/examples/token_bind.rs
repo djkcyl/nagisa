@@ -22,12 +22,7 @@ async fn issue(reply: Reply, s: Sender, pend: State<Rendezvous<String, Uin>>) ->
 /// 私聊:发来一个 `BINDxxxx` token 认领待定的绑定。`PrivateMessage` 把它限定在私聊;`Command`
 /// 携带匹配到的 token。
 #[command(regex = r"^BIND\d{4}$", id = "claim")]
-async fn claim(
-    _pm: PrivateMessage,
-    cmd: Command,
-    pend: State<Rendezvous<String, Uin>>,
-    reply: Reply,
-) -> HandlerResult {
+async fn claim(_pm: PrivateMessage, cmd: Command, pend: State<Rendezvous<String, Uin>>, reply: Reply) -> HandlerResult {
     match pend.claim(&cmd.0) {
         Some(issuer) => {
             // 真实 bot 里你会在这里持久化(issuer ↔ 这个私聊账号)的关联。
@@ -47,9 +42,7 @@ async fn main() -> Result<()> {
     // `Rendezvous<String, Uin>` 由 `App::new` 自动提供(默认 TTL 5 分钟),所以
     // token/bind handler 的 `State<Rendezvous<..>>` 无需手动 `.data(..)` 就能用。要覆盖就自己
     // 注册一个。
-    App::new()
-        .run_onebot(OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"), shutdown)
-        .await
+    App::new().run_onebot(OneBotConfig::new("ws://127.0.0.1:8080/onebot/v11/ws"), shutdown).await
 }
 
 #[cfg(not(feature = "onebot"))]

@@ -60,9 +60,7 @@ pub async fn run_reverse_ws(
     shutdown: ShutdownToken,
 ) -> Result<()> {
     let listener = TcpListener::bind(bind).await.map_err(|e| {
-        nagisa_types::error::Error::Transport(nagisa_types::error::TransportError::WebSocket(
-            e.to_string(),
-        ))
+        nagisa_types::error::Error::Transport(nagisa_types::error::TransportError::WebSocket(e.to_string()))
     })?;
     tracing::info!(%bind, %path, "onebot reverse-ws listening");
 
@@ -123,11 +121,8 @@ async fn serve_conn(
                 .and_then(|v| v.to_str().ok())
                 .map(|v| v == format!("Bearer {want}"))
                 .unwrap_or(false);
-            let query_ok = req
-                .uri()
-                .query()
-                .map(|q| q.split('&').any(|kv| kv == format!("access_token={want}")))
-                .unwrap_or(false);
+            let query_ok =
+                req.uri().query().map(|q| q.split('&').any(|kv| kv == format!("access_token={want}"))).unwrap_or(false);
             if !header_ok && !query_ok {
                 return Err(err_response(StatusCode::UNAUTHORIZED));
             }
@@ -140,22 +135,14 @@ async fn serve_conn(
             None => return Err(err_response(StatusCode::BAD_REQUEST)),
         };
         // `X-Self-ID`:连入 bot 的 QQ uin(信息性;用于日志 / 未来多账号路由)。原样读取,绝不强制。
-        let self_id = req
-            .headers()
-            .get("X-Self-ID")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string);
+        let self_id = req.headers().get("X-Self-ID").and_then(|v| v.to_str().ok()).map(str::to_string);
         *handshake_meta.lock().expect("handshake_meta poisoned") = (role, self_id);
         Ok(resp)
     };
 
-    let ws = tokio_tungstenite::accept_hdr_async(stream, callback)
-        .await
-        .map_err(|e| {
-            nagisa_types::error::Error::Transport(nagisa_types::error::TransportError::WebSocket(
-                e.to_string(),
-            ))
-        })?;
+    let ws = tokio_tungstenite::accept_hdr_async(stream, callback).await.map_err(|e| {
+        nagisa_types::error::Error::Transport(nagisa_types::error::TransportError::WebSocket(e.to_string()))
+    })?;
     let (role, self_id) = handshake_meta.into_inner().expect("handshake_meta poisoned");
     tracing::info!(
         %peer,
@@ -242,9 +229,7 @@ async fn serve_conn(
     // 传输层断开：与连接对称，仅对承载事件的 socket 发 Meta::Disconnect（反向 WS 这里以
     // Ok 收束、无独立错误文案，故 reason 为 None）。
     if carries_events {
-        let _ = sink.try_send(nagisa_types::event::Event::Meta(
-            nagisa_types::event::Meta::Disconnect { reason: None },
-        ));
+        let _ = sink.try_send(nagisa_types::event::Event::Meta(nagisa_types::event::Meta::Disconnect { reason: None }));
     }
     res
 }

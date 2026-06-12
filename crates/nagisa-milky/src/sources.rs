@@ -36,19 +36,13 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(90);
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
 /// `connect_async` 返回的 WS 流类型(本地命名,供 [`WsSource`] 持有)。
-type WsStream = tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
->;
+type WsStream = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 // ───────────────────────── EventSource ─────────────────────────
 
 #[async_trait]
 impl EventSource for MilkyAdapter {
-    async fn run(
-        self: Arc<Self>,
-        sink: mpsc::Sender<Event>,
-        shutdown: ShutdownToken,
-    ) -> Result<()> {
+    async fn run(self: Arc<Self>, sink: mpsc::Sender<Event>, shutdown: ShutdownToken) -> Result<()> {
         // WebHook 接收端是「nagisa 起服务端、协议端 POST 事件」的反向信道，并非可重连的
         // 出站连接：独立运行路径——直接起 axum 服务运行至 shutdown，不进退避重连循环。
         // 配了 webhook 即优先此路径，`mode`(出站 ws/sse)被忽略。
@@ -59,53 +53,51 @@ impl EventSource for MilkyAdapter {
 
         // 重连退避：起点 500ms、封顶 30s、倍率 2、无 jitter(沿用现状)。断开副作用
         // (发 Meta::Disconnect + 记日志,ws/sse 共用)留在「连一次」闭包内(见 nagisa_core::reconnect)。
-        let backoff = nagisa_core::reconnect::Backoff::new(
-            Duration::from_millis(500),
-            Duration::from_secs(30),
-        );
+        let backoff = nagisa_core::reconnect::Backoff::new(Duration::from_millis(500), Duration::from_secs(30));
         let me = &self;
         let sink_ref = &sink;
         let shutdown_ref = &shutdown;
-        nagisa_core::reconnect::run(&shutdown, backoff, |_| 0, move || async move {
-            let connect = tokio::select! {
-                biased;
-                _ = shutdown_ref.cancelled() => return nagisa_core::reconnect::Step::Stop,
-                r = async {
-                    // 出站信道只有 ws/sse 两种（webhook 在上方独立路径已 return）。
-                    match me.mode {
-                        MilkyMode::Sse => me.connect_and_pump_sse(sink_ref, shutdown_ref).await,
-                        MilkyMode::Ws => me.connect_and_pump(sink_ref, shutdown_ref).await,
+        nagisa_core::reconnect::run(
+            &shutdown,
+            backoff,
+            |_| 0,
+            move || async move {
+                let connect = tokio::select! {
+                    biased;
+                    _ = shutdown_ref.cancelled() => return nagisa_core::reconnect::Step::Stop,
+                    r = async {
+                        // 出站信道只有 ws/sse 两种（webhook 在上方独立路径已 return）。
+                        match me.mode {
+                            MilkyMode::Sse => me.connect_and_pump_sse(sink_ref, shutdown_ref).await,
+                            MilkyMode::Ws => me.connect_and_pump(sink_ref, shutdown_ref).await,
+                        }
+                    } => r,
+                };
+                match connect {
+                    // 干净退出（收到 shutdown）。
+                    Ok(true) => nagisa_core::reconnect::Step::Stop,
+                    // 连接断开/失败 → 退避重连。
+                    other => {
+                        // 传输层断开：发 Meta::Disconnect（ws/sse 共用此重连分支，口径统一）。
+                        // `Err(e)` 带错误文案，空闲/对端关闭（Ok(false)）则无 reason。
+                        let reason = match &other {
+                            Err(e) => Some(e.to_string()),
+                            _ => None,
+                        };
+                        let _ = sink_ref.try_send(Event::Meta(nagisa_types::event::Meta::Disconnect { reason }));
+                        tracing::warn!("milky event source disconnected; reconnecting");
+                        nagisa_core::reconnect::Step::Reconnect
                     }
-                } => r,
-            };
-            match connect {
-                // 干净退出（收到 shutdown）。
-                Ok(true) => nagisa_core::reconnect::Step::Stop,
-                // 连接断开/失败 → 退避重连。
-                other => {
-                    // 传输层断开：发 Meta::Disconnect（ws/sse 共用此重连分支，口径统一）。
-                    // `Err(e)` 带错误文案，空闲/对端关闭（Ok(false)）则无 reason。
-                    let reason = match &other {
-                        Err(e) => Some(e.to_string()),
-                        _ => None,
-                    };
-                    let _ = sink_ref.try_send(Event::Meta(nagisa_types::event::Meta::Disconnect { reason }));
-                    tracing::warn!("milky event source disconnected; reconnecting");
-                    nagisa_core::reconnect::Step::Reconnect
                 }
-            }
-        })
+            },
+        )
         .await
     }
 }
 
 impl MilkyAdapter {
     /// 连接一次并 pump 事件。返回 `Ok(true)` = 收到 shutdown；`Ok(false)` = 连接断开。
-    async fn connect_and_pump(
-        &self,
-        sink: &mpsc::Sender<Event>,
-        shutdown: &ShutdownToken,
-    ) -> Result<bool> {
+    async fn connect_and_pump(&self, sink: &mpsc::Sender<Event>, shutdown: &ShutdownToken) -> Result<bool> {
         // 同时带 Bearer header 与 ?access_token= query（two-belt）。
         let mut request = self
             .event_url
@@ -116,9 +108,7 @@ impl MilkyAdapter {
             let value = format!("Bearer {token}")
                 .parse()
                 .map_err(|_| Error::Transport(TransportError::WebSocket("bad token".into())))?;
-            request
-                .headers_mut()
-                .insert(reqwest::header::AUTHORIZATION.as_str(), value);
+            request.headers_mut().insert(reqwest::header::AUTHORIZATION.as_str(), value);
         }
 
         let (ws, _resp) = tokio_tungstenite::connect_async(request)
@@ -165,15 +155,8 @@ impl MilkyAdapter {
     /// 不再被塞进实现版本 `version`（后者优先取 `impl_version`，缺失时退回 `milky_version`
     /// 以保持向后兼容的非空展示）。所有 wire 字段缺失均降级（绝不 panic）。
     pub(crate) fn parse_impl_info(data: &Value) -> ImplInfo {
-        let milky_version = data
-            .get("milky_version")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-        let name = data
-            .get("impl_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string();
+        let milky_version = data.get("milky_version").and_then(|v| v.as_str()).map(str::to_string);
+        let name = data.get("impl_name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
         let version = data
             .get("impl_version")
             .and_then(|v| v.as_str())
@@ -181,21 +164,9 @@ impl MilkyAdapter {
             // 实现版本缺失时退回 spec 版本，避免展示成 "unknown"。
             .or_else(|| milky_version.clone())
             .unwrap_or_else(|| "unknown".to_string());
-        let qq_protocol_version = data
-            .get("qq_protocol_version")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-        let qq_protocol_type = data
-            .get("qq_protocol_type")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-        ImplInfo {
-            name,
-            version,
-            qq_protocol_version,
-            qq_protocol_type,
-            milky_version,
-        }
+        let qq_protocol_version = data.get("qq_protocol_version").and_then(|v| v.as_str()).map(str::to_string);
+        let qq_protocol_type = data.get("qq_protocol_type").and_then(|v| v.as_str()).map(str::to_string);
+        ImplInfo { name, version, qq_protocol_version, qq_protocol_type, milky_version }
     }
 
     /// 最佳努力的 `get_impl_info` 能力探测（走 HTTP，不触碰事件信道）。
@@ -233,8 +204,7 @@ impl MilkyAdapter {
                 let raw_event = nagisa_types::event::Event::Raw(nagisa_types::event::RawEvent {
                     protocol: Protocol::Milky,
                     kind: "decode_error".into(),
-                    raw: serde_json::from_str(raw)
-                        .unwrap_or_else(|_| Value::String(raw.to_string())),
+                    raw: serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string())),
                 });
                 sink.send(raw_event).await.is_err()
             }
@@ -244,42 +214,25 @@ impl MilkyAdapter {
     /// SSE 事件源：GET `/event`（http/https，不带 Upgrade），读取 `text/event-stream`。
     /// 逐 chunk 缓冲行，遇空行即把累积的 `data:` 行拼成 JSON 交给 `dispatch_event`。
     /// 返回 `Ok(true)` = 收到 shutdown；`Ok(false)` = 流断开（触发退避重连）。
-    async fn connect_and_pump_sse(
-        &self,
-        sink: &mpsc::Sender<Event>,
-        shutdown: &ShutdownToken,
-    ) -> Result<bool> {
+    async fn connect_and_pump_sse(&self, sink: &mpsc::Sender<Event>, shutdown: &ShutdownToken) -> Result<bool> {
         // 事件 URL 保持 http/https scheme（event_url 是 ws/wss，需换回 http/https）。
         let mut url = self.event_url.clone();
         let http_scheme = match url.scheme() {
             "ws" | "http" => "http",
             "wss" | "https" => "https",
-            other => {
-                return Err(Error::Transport(TransportError::Http(format!(
-                    "unsupported scheme: {other}"
-                ))))
-            }
+            other => return Err(Error::Transport(TransportError::Http(format!("unsupported scheme: {other}")))),
         };
-        url.set_scheme(http_scheme)
-            .map_err(|_| Error::Transport(TransportError::Http("set_scheme failed".into())))?;
+        url.set_scheme(http_scheme).map_err(|_| Error::Transport(TransportError::Http("set_scheme failed".into())))?;
 
         // GET /event with Accept: text/event-stream + Bearer/query auth（与 ws pump 同样 two-belt）。
-        let mut req = self
-            .http
-            .get(url.clone())
-            .header(reqwest::header::ACCEPT, "text/event-stream");
+        let mut req = self.http.get(url.clone()).header(reqwest::header::ACCEPT, "text/event-stream");
         if let Some(token) = &self.access_token {
             req = req.bearer_auth(token);
         }
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+        let resp = req.send().await.map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
         let status = resp.status();
         if !status.is_success() {
-            return Err(Error::Transport(TransportError::Http(format!(
-                "milky sse GET /event: HTTP {status}"
-            ))));
+            return Err(Error::Transport(TransportError::Http(format!("milky sse GET /event: HTTP {status}"))));
         }
         tracing::info!("milky event sse connected: {url}");
         // 连接已建立：公共序（Meta::Connect + probe_impl_info + idle 看门狗循环骨架）交 `run_pump`

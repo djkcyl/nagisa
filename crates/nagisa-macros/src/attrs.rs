@@ -15,9 +15,7 @@
 use proc_macro2::Span;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{
-    Error, Expr, ExprLit, ExprUnary, Ident, Lit, LitBool, LitInt, LitStr, Token, Type, UnOp,
-};
+use syn::{Error, Expr, ExprLit, ExprUnary, Ident, Lit, LitBool, LitInt, LitStr, Token, Type, UnOp};
 
 /// 匹配器选择：互斥的三选一（一种触发器,三种写法）。
 /// **前导位置参数** = 字面量命令词(`#[command("签到", "sign")]`,编译成正则);`regex` = 原始正则;
@@ -219,10 +217,7 @@ impl Parse for CommandArgs {
 
 fn set_kind(slot: &mut Option<MatcherKind>, id: &Ident, kind: MatcherKind) -> syn::Result<()> {
     if slot.is_some() {
-        return Err(Error::new(
-            id.span(),
-            "只能给一种匹配器：前导位置命令词、`regex=\"..\"` 或 `slots=Type`，三选一",
-        ));
+        return Err(Error::new(id.span(), "只能给一种匹配器：前导位置命令词、`regex=\"..\"` 或 `slots=Type`，三选一"));
     }
     *slot = Some(kind);
     Ok(())
@@ -312,9 +307,7 @@ impl MetaValue {
             MetaValue::Int(i) => i.base10_parse::<i32>(),
             MetaValue::NegInt(i) => {
                 let n = i.base10_parse::<i32>()?;
-                n.checked_neg().ok_or_else(|| {
-                    Error::new(id.span(), "priority value out of range for i32")
-                })
+                n.checked_neg().ok_or_else(|| Error::new(id.span(), "priority value out of range for i32"))
             }
             _ => Err(Error::new(id.span(), format!("`{id}` expects an integer literal"))),
         }

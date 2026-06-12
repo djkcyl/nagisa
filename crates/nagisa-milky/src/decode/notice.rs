@@ -10,10 +10,7 @@ pub(super) fn decode_recall(data: &Value, _time: i64) -> Option<Notice> {
         "group" => Scene::Group,
         _ => Scene::Temp,
     };
-    let peer = Peer {
-        scene,
-        id: Uin(get_i64(data, "peer_id")),
-    };
+    let peer = Peer { scene, id: Uin(get_i64(data, "peer_id")) };
     let seq = get_i64(data, "message_seq");
     let suffix = get_str(data, "display_suffix");
     Some(Notice::Recall {
@@ -33,10 +30,7 @@ pub(super) fn decode_peer_pin(data: &Value) -> Option<Notice> {
         _ => Scene::Temp,
     };
     Some(Notice::PeerPinChange {
-        peer: Peer {
-            scene,
-            id: Uin(get_i64(data, "peer_id")),
-        },
+        peer: Peer { scene, id: Uin(get_i64(data, "peer_id")) },
         is_pinned: get_bool(data, "is_pinned"),
     })
 }

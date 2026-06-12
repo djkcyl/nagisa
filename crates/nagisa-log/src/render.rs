@@ -16,9 +16,7 @@
 //! 与无名称缓存的场景直接调用;要着色 / 解析名字则填好 [`RenderOpts`] 走 [`render_line`]。
 use crate::names::NameStore;
 use nagisa_types::entity::{FriendInfo, MemberInfo};
-use nagisa_types::event::{
-    Event, FlashFilePhase, Meta, Notice, OnlineFileDirection, Request, RequestState,
-};
+use nagisa_types::event::{Event, FlashFilePhase, Meta, Notice, OnlineFileDirection, Request, RequestState};
 use nagisa_types::id::{MessageId, Peer, Scene, Uin};
 use nagisa_types::resource::Media;
 use nagisa_types::segment::{ContactKind, Forward, MusicShare, Segment};
@@ -113,9 +111,7 @@ pub fn render_line(event: &Event, opts: &RenderOpts) -> String {
         Event::Notice(n) => render_notice(n, opts),
         Event::Request(r) => render_request(r, opts),
         Event::Meta(meta) => render_meta(meta, opts),
-        Event::Raw(raw) => {
-            opts.style.paint(C_META, &format!("[原始] {:?} {}", raw.protocol, raw.kind))
-        }
+        Event::Raw(raw) => opts.style.paint(C_META, &format!("[原始] {:?} {}", raw.protocol, raw.kind)),
         // `Event` 为 #[non_exhaustive]：未知未来变体降级，绝不 panic。
         _ => opts.style.paint(C_META, "[未知事件]"),
     };
@@ -292,21 +288,14 @@ fn render_self_message(m: &nagisa_types::event::MessageEvent, opts: &RenderOpts)
 /// 场景前缀(按种类着色)：群给群号(可解析群名)，私聊/临时各自标注。
 fn scene_prefix(peer: &Peer, opts: &RenderOpts) -> String {
     match peer.scene {
-        Scene::Group => {
-            opts.style.paint(C_GROUP, &format!("[群 {}]", group_label(peer.id.0, opts)))
-        }
+        Scene::Group => opts.style.paint(C_GROUP, &format!("[群 {}]", group_label(peer.id.0, opts))),
         Scene::Friend => opts.style.paint(C_PRIV, "[私聊]"),
         Scene::Temp => opts.style.paint(C_PRIV, &format!("[临时 {}]", peer.id)),
     }
 }
 
 /// 发送者：优先群名片/群昵称、其次好友昵称、再次缓存学到的名;名着色、`(号)` 暗色。
-fn render_sender(
-    sender: Uin,
-    member: Option<&MemberInfo>,
-    friend: Option<&FriendInfo>,
-    opts: &RenderOpts,
-) -> String {
+fn render_sender(sender: Uin, member: Option<&MemberInfo>, friend: Option<&FriendInfo>, opts: &RenderOpts) -> String {
     // 优先群名片/群昵称([`MemberInfo::display_name`]),其次好友备注/昵称
     // ([`FriendInfo::display_name`]),再次缓存学到的名;空串视作无名,回落下一级。
     let name = member
@@ -314,11 +303,9 @@ fn render_sender(
         .or_else(|| friend.and_then(|f| non_empty(f.display_name())))
         .or_else(|| resolve_user(sender.0, opts));
     match name {
-        Some(name) => format!(
-            "{}{}",
-            opts.style.paint(C_NAME, &clip_name(&name)),
-            opts.style.paint(C_ID, &format!("({sender})"))
-        ),
+        Some(name) => {
+            format!("{}{}", opts.style.paint(C_NAME, &clip_name(&name)), opts.style.paint(C_ID, &format!("({sender})")))
+        }
         None => opts.style.paint(C_ID, &sender.to_string()),
     }
 }
@@ -383,8 +370,7 @@ fn render_segment(seg: &Segment, opts: &RenderOpts) -> String {
         Segment::Reply { id, sender, .. } => {
             // 被回复者:优先段自带 sender,Lagrange 的 reply 段无 sender → 按 id 查最近消息缓存补名字。
             // 内容不再整段预览,改标被回复消息的 #id——用户可 ctrl-F 定位原消息那行(免重复整段内容)。
-            let target =
-                sender.map(|u| u.0).or_else(|| opts.messages.and_then(|m| m.get(id)).map(|c| c.sender.0));
+            let target = sender.map(|u| u.0).or_else(|| opts.messages.and_then(|m| m.get(id)).map(|c| c.sender.0));
             let mut inner = String::from("回复");
             if let Some(uin) = target {
                 inner.push_str(&format!(
@@ -407,18 +393,10 @@ fn render_segment(seg: &Segment, opts: &RenderOpts) -> String {
         Segment::MarketFace { package_id, emoji_id, summary, .. } => {
             // 优先用从 gtimg 表情包列表反查到的**规范名**(`包名·表情名`,不受发送方改写);否则
             // 回落到 summary(可能被改写的描述);再不行只标占位。
-            let name = opts
-                .names
-                .and_then(|n| n.market_face_display(*package_id, emoji_id))
-                .or_else(|| {
-                    // summary 多是带方括号的占位(`[疑问]`)→ 去括号,免得 `[商城表情 [疑问]]`。
-                    summary
-                        .as_deref()
-                        .map(strip_brackets)
-                        .map(str::trim)
-                        .filter(|x| !x.is_empty())
-                        .map(str::to_string)
-                });
+            let name = opts.names.and_then(|n| n.market_face_display(*package_id, emoji_id)).or_else(|| {
+                // summary 多是带方括号的占位(`[疑问]`)→ 去括号,免得 `[商城表情 [疑问]]`。
+                summary.as_deref().map(strip_brackets).map(str::trim).filter(|x| !x.is_empty()).map(str::to_string)
+            });
             let label = match name {
                 Some(n) => format!("[商城表情 {n}]"),
                 None => "[商城表情]".to_string(),
@@ -459,9 +437,7 @@ fn render_segment(seg: &Segment, opts: &RenderOpts) -> String {
         Segment::LongMsg { .. } => s.paint(C_MISC, "[长消息]"),
         Segment::FlashFile { .. } | Segment::FlashTransfer { .. } => s.paint(C_MEDIA, "[闪传]"),
         Segment::MiniApp { .. } => s.paint(C_MISC, "[小程序]"),
-        Segment::OnlineFile { file_name, .. } => {
-            s.paint(C_MEDIA, &format!("[在线文件 {file_name}]"))
-        }
+        Segment::OnlineFile { file_name, .. } => s.paint(C_MEDIA, &format!("[在线文件 {file_name}]")),
         Segment::Raw { kind, .. } => s.paint(C_MISC, &format!("[{kind}]")),
         // `Segment` 为 #[non_exhaustive]：未知未来段降级为占位，绝不 panic。
         _ => s.paint(C_MISC, "[未知段]"),
@@ -488,10 +464,7 @@ fn render_notice(n: &Notice, opts: &RenderOpts) -> String {
             // 撤回通知只带被撤消息 id;若最近消息缓存里还留着,附上被撤内容预览。
             match opts.messages.and_then(|store| store.get(id)) {
                 Some(msg) => {
-                    let preview = render_segments_styled(
-                        &msg.content,
-                        &RenderOpts { style: Style::Plain, ..*opts },
-                    );
+                    let preview = render_segments_styled(&msg.content, &RenderOpts { style: Style::Plain, ..*opts });
                     let preview = preview.trim();
                     if preview.is_empty() {
                         base
@@ -531,10 +504,7 @@ fn render_notice(n: &Notice, opts: &RenderOpts) -> String {
             format!("{} {} 在群 {} {verb}管理员", tag("[管理变更]"), u(*user), g(*group))
         }
         Notice::Mute { group, user, operator, duration } => {
-            format!(
-                "{} {} 禁言 {} {duration}s（群 {}）",
-                tag("[禁言]"), u(*operator), u(*user), g(*group)
-            )
+            format!("{} {} 禁言 {} {duration}s（群 {}）", tag("[禁言]"), u(*operator), u(*user), g(*group))
         }
         Notice::WholeMute { group, operator, is_mute } => {
             let verb = if *is_mute { "开启" } else { "关闭" };
@@ -564,7 +534,12 @@ fn render_notice(n: &Notice, opts: &RenderOpts) -> String {
         }
         Notice::GroupNudge { group, sender, receiver, display } => format!(
             "{} 群 {} {} {}了 {}{}",
-            tag("[戳一戳]"), g(*group), u(*sender), display.action, u(*receiver), display.suffix
+            tag("[戳一戳]"),
+            g(*group),
+            u(*sender),
+            display.action,
+            u(*receiver),
+            display.suffix
         ),
         Notice::Reaction { group, user, face_id, is_add, .. } => {
             let verb = if *is_add { "回应" } else { "取消回应" };
@@ -659,17 +634,15 @@ fn render_request(r: &Request, opts: &RenderOpts) -> String {
             s
         }
         Request::GroupJoin { group, initiator, comment, invitor, .. } => {
-            let mut s =
-                format!("{} {} → 群 {}: {comment}", tag("[加群请求]"), u(*initiator), g(*group));
+            let mut s = format!("{} {} → 群 {}: {comment}", tag("[加群请求]"), u(*initiator), g(*group));
             if let Some(inv) = invitor {
                 s.push_str(&format!("（邀请人 {}）", u(*inv)));
             }
             s
         }
-        Request::GroupInvitedJoin { group, initiator, target, .. } => format!(
-            "{} {} 邀请 {} 加入群 {}",
-            tag("[他人入群邀请]"), u(*initiator), u(*target), g(*group)
-        ),
+        Request::GroupInvitedJoin { group, initiator, target, .. } => {
+            format!("{} {} 邀请 {} 加入群 {}", tag("[他人入群邀请]"), u(*initiator), u(*target), g(*group))
+        }
         Request::GroupInvite { group, initiator, comment, .. } => {
             format!("{} {} 邀请你加入群 {}: {comment}", tag("[入群邀请]"), u(*initiator), g(*group))
         }

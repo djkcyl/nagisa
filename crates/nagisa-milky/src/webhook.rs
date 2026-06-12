@@ -39,13 +39,9 @@ pub(crate) async fn run_webhook(
 ) -> Result<()> {
     let access_token = adapter.access_token.clone();
     let state = WebHookState { adapter, sink, access_token };
-    let app = Router::new()
-        .route(path, post(handle_post))
-        .with_state(state);
+    let app = Router::new().route(path, post(handle_post)).with_state(state);
 
-    let listener = TcpListener::bind(bind)
-        .await
-        .map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
+    let listener = TcpListener::bind(bind).await.map_err(|e| Error::Transport(TransportError::Http(e.to_string())))?;
     tracing::info!(%bind, %path, "milky webhook receiver listening");
 
     let sd = shutdown.clone();
@@ -57,11 +53,7 @@ pub(crate) async fn run_webhook(
 }
 
 /// `POST <path>`：校验 Bearer（若配置），decode → Event，推入 sink，回 `200`。
-async fn handle_post(
-    State(state): State<WebHookState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> StatusCode {
+async fn handle_post(State(state): State<WebHookState>, headers: HeaderMap, body: Bytes) -> StatusCode {
     // Bearer 校验（仅当配置了 access_token）。Milky 用 Bearer，无 HMAC 签名头。
     if let Some(token) = &state.access_token {
         let provided = headers

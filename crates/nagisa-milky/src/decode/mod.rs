@@ -20,8 +20,8 @@ use nagisa_types::entity::{FriendCategory, FriendInfo, GroupInfo, MemberInfo, Ro
 use nagisa_types::event::RequestToken as Token;
 use nagisa_types::event::RequestTokenInner;
 use nagisa_types::event::{
-    EmojiLike, Event, MemberDecreaseReason, MessageEvent, Notice, NudgeDisplay, RawEvent,
-    ReactionKind, Request, RequestState,
+    EmojiLike, Event, MemberDecreaseReason, MessageEvent, Notice, NudgeDisplay, RawEvent, ReactionKind, Request,
+    RequestState,
 };
 use nagisa_types::id::{MessageId, Peer, Scene, Uin};
 use nagisa_types::prelude::Protocol;
@@ -30,8 +30,8 @@ use nagisa_types::segment::{Forward, ImageSubType, Segment};
 use serde_json::{Map, Value};
 
 use crate::wire::{
-    EventEnvelope, FriendEntity, GroupEntity, GroupMemberEntity, IncomingMessage, IncomingSegment,
-    MessageScene, WireImageSubType, WireReactionType, WireRole, WireSex,
+    EventEnvelope, FriendEntity, GroupEntity, GroupMemberEntity, IncomingMessage, IncomingSegment, MessageScene,
+    WireImageSubType, WireReactionType, WireRole, WireSex,
 };
 
 mod entity;
@@ -40,24 +40,17 @@ mod notice;
 mod request;
 mod segment;
 
-use notice::{
-    decode_friend_nudge, decode_group_nudge, decode_peer_pin, decode_recall,
-};
+use notice::{decode_friend_nudge, decode_group_nudge, decode_peer_pin, decode_recall};
 use request::{
-    decode_friend_request, decode_group_invitation, decode_group_invited_join_request,
-    decode_group_join_request,
+    decode_friend_request, decode_group_invitation, decode_group_invited_join_request, decode_group_join_request,
 };
 
 pub use entity::{
     announcement_from_value, essence_message_from_value, file_meta_from_group_file, friend_info,
     group_folder_from_value, group_info, member_info, role_from_wire, sex_from_wire,
 };
-pub use message::{
-    forward_node_from_value, message_event_from_incoming,
-};
-pub use request::{
-    friend_request_to_request, notification_to_notice, notification_to_request,
-};
+pub use message::{forward_node_from_value, message_event_from_incoming};
+pub use request::{friend_request_to_request, notification_to_notice, notification_to_request};
 pub use segment::decode_segments;
 
 // ───────────────────────── 公共入口 ─────────────────────────
@@ -83,29 +76,29 @@ pub fn decode_envelope(env: EventEnvelope) -> Result<Event, serde_json::Error> {
             let msg: IncomingMessage = serde_json::from_value(data.clone())?;
             Event::Message(Box::new(message::decode_message(msg, self_id, time, data)))
         }
-        "message_recall" => decode_recall(&data, time)
-            .map(Event::Notice)
-            .unwrap_or_else(|| raw(&env.event_type, data.clone())),
+        "message_recall" => {
+            decode_recall(&data, time).map(Event::Notice).unwrap_or_else(|| raw(&env.event_type, data.clone()))
+        }
         "bot_offline" => Event::Notice(Notice::BotOffline {
             reason: get_str(&data, "reason"),
             // Milky bot_offline 无 tag（仅 reason）。
             tag: None,
         }),
-        "peer_pin_change" => decode_peer_pin(&data)
-            .map(Event::Notice)
-            .unwrap_or_else(|| raw(&env.event_type, data.clone())),
-        "friend_request" => decode_friend_request(&data, time)
-            .map(Event::Request)
-            .unwrap_or_else(|| raw(&env.event_type, data.clone())),
-        "group_join_request" => decode_group_join_request(&data)
-            .map(Event::Request)
-            .unwrap_or_else(|| raw(&env.event_type, data.clone())),
+        "peer_pin_change" => {
+            decode_peer_pin(&data).map(Event::Notice).unwrap_or_else(|| raw(&env.event_type, data.clone()))
+        }
+        "friend_request" => {
+            decode_friend_request(&data, time).map(Event::Request).unwrap_or_else(|| raw(&env.event_type, data.clone()))
+        }
+        "group_join_request" => {
+            decode_group_join_request(&data).map(Event::Request).unwrap_or_else(|| raw(&env.event_type, data.clone()))
+        }
         "group_invited_join_request" => decode_group_invited_join_request(&data)
             .map(Event::Request)
             .unwrap_or_else(|| raw(&env.event_type, data.clone())),
-        "group_invitation" => decode_group_invitation(&data)
-            .map(Event::Request)
-            .unwrap_or_else(|| raw(&env.event_type, data.clone())),
+        "group_invitation" => {
+            decode_group_invitation(&data).map(Event::Request).unwrap_or_else(|| raw(&env.event_type, data.clone()))
+        }
         "friend_nudge" => decode_friend_nudge(&data),
         "group_nudge" => decode_group_nudge(&data),
         "group_admin_change" => Event::Notice(Notice::AdminChange {
@@ -132,11 +125,7 @@ pub fn decode_envelope(env: EventEnvelope) -> Result<Event, serde_json::Error> {
         // OFFICIAL: https://github.com/SaltifyDev/milky/blob/main/protocol/src/ir/common.ts (group_member_decrease)
         "group_member_decrease" => {
             let operator = get_opt_i64(&data, "operator_id").map(Uin);
-            let reason = if operator.is_some() {
-                MemberDecreaseReason::Kick
-            } else {
-                MemberDecreaseReason::Leave
-            };
+            let reason = if operator.is_some() { MemberDecreaseReason::Kick } else { MemberDecreaseReason::Leave };
             Event::Notice(Notice::MemberDecrease {
                 group: Uin(get_i64(&data, "group_id")),
                 user: Uin(get_i64(&data, "user_id")),
@@ -193,19 +182,13 @@ pub fn decode_envelope(env: EventEnvelope) -> Result<Event, serde_json::Error> {
 }
 
 fn raw(kind: &str, data: Value) -> Event {
-    Event::Raw(RawEvent {
-        protocol: Protocol::Milky,
-        kind: kind.to_string(),
-        raw: data,
-    })
+    Event::Raw(RawEvent { protocol: Protocol::Milky, kind: kind.to_string(), raw: data })
 }
 
 // ───────────────────────── 杂项 ─────────────────────────
 
 fn reaction_kind(data: &Value) -> ReactionKind {
-    let t: Option<WireReactionType> = data
-        .get("reaction_type")
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
+    let t: Option<WireReactionType> = data.get("reaction_type").and_then(|v| serde_json::from_value(v.clone()).ok());
     match t {
         Some(WireReactionType::Emoji) => ReactionKind::Emoji,
         _ => ReactionKind::Face,
@@ -241,14 +224,8 @@ fn get_bool(v: &Value, key: &str) -> bool {
     v.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 fn get_str(v: &Value, key: &str) -> String {
-    v.get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
+    v.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
 }
 fn get_opt_str(v: &Value, key: &str) -> Option<String> {
-    v.get(key)
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+    v.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)
 }

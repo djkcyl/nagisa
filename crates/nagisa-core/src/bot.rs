@@ -59,10 +59,7 @@ pub struct Bot {
 
 impl Bot {
     pub fn new(inner: Arc<dyn Actions>, self_id: Uin) -> Self {
-        Self {
-            inner,
-            self_id: Arc::new(AtomicI64::new(self_id.0)),
-        }
+        Self { inner, self_id: Arc::new(AtomicI64::new(self_id.0)) }
     }
 
     pub fn self_id(&self) -> Uin {
@@ -105,12 +102,7 @@ impl Bot {
     pub async fn get_group_list(&self, no_cache: bool) -> Result<Vec<GroupInfo>> {
         self.inner.get_group_list(no_cache).await
     }
-    pub async fn get_group_member_info(
-        &self,
-        group: Uin,
-        user: Uin,
-        no_cache: bool,
-    ) -> Result<MemberInfo> {
+    pub async fn get_group_member_info(&self, group: Uin, user: Uin, no_cache: bool) -> Result<MemberInfo> {
         self.inner.get_group_member_info(group, user, no_cache).await
     }
     pub async fn get_group_member_list(&self, group: Uin, no_cache: bool) -> Result<Vec<MemberInfo>> {
@@ -137,12 +129,7 @@ impl Bot {
     pub async fn kick_group_member(&self, group: Uin, user: Uin, reject_add: bool) -> Result<()> {
         self.inner.kick_group_member(group, user, reject_add).await
     }
-    pub async fn handle_request(
-        &self,
-        token: &RequestToken,
-        approve: bool,
-        reason: Option<&str>,
-    ) -> Result<()> {
+    pub async fn handle_request(&self, token: &RequestToken, approve: bool, reason: Option<&str>) -> Result<()> {
         self.inner.handle_request(token, approve, reason).await
     }
     pub async fn send_reaction(
@@ -170,12 +157,7 @@ impl Bot {
         self.inner.upload_group_file(group, src, name, parent_folder_id).await
     }
     /// 上传私聊（好友）文件，返回服务端分配的文件 id。
-    pub async fn upload_private_file(
-        &self,
-        user: Uin,
-        src: ResourceSource,
-        name: &str,
-    ) -> Result<String> {
+    pub async fn upload_private_file(&self, user: Uin, src: ResourceSource, name: &str) -> Result<String> {
         self.inner.upload_private_file(user, src, name).await
     }
     /// 任意用户档案（含陌生人）。
@@ -203,9 +185,7 @@ impl Bot {
         start_seq: Option<i64>,
         limit: u32,
     ) -> Result<(Vec<MessageEvent>, Option<i64>)> {
-        self.inner
-            .get_history_messages_paged(peer, start_seq, limit)
-            .await
+        self.inner.get_history_messages_paged(peer, start_seq, limit).await
     }
     /// 退出（`dismiss=true` 时解散）群。
     pub async fn leave_group(&self, group: Uin, dismiss: bool) -> Result<()> {
@@ -219,9 +199,7 @@ impl Bot {
         title: &str,
         duration: i64,
     ) -> Result<()> {
-        self.inner
-            .set_group_member_special_title(group, user, title, duration)
-            .await
+        self.inner.set_group_member_special_title(group, user, title, duration).await
     }
     /// 标记消息已读。
     pub async fn mark_message_as_read(&self, peer: &Peer, id: &MessageId) -> Result<()> {
@@ -236,11 +214,7 @@ impl Bot {
         self.inner.get_resource_url(resource_id).await
     }
     /// 群文件下载直链。
-    pub async fn get_group_file_download_url(
-        &self,
-        group: Uin,
-        file_id: &str,
-    ) -> Result<String> {
+    pub async fn get_group_file_download_url(&self, group: Uin, file_id: &str) -> Result<String> {
         self.inner.get_group_file_download_url(group, file_id).await
     }
     /// 删除群文件。
@@ -324,25 +298,14 @@ impl Bot {
         limit: u32,
         is_filtered: bool,
     ) -> Result<(Vec<Notice>, Option<i64>)> {
-        self.inner
-            .get_group_notices_paged(start_seq, limit, is_filtered)
-            .await
+        self.inner.get_group_notices_paged(start_seq, limit, is_filtered).await
     }
     /// 列出群文件与子文件夹。
-    pub async fn get_group_files(
-        &self,
-        group: Uin,
-        folder_id: Option<&str>,
-    ) -> Result<GroupFileList> {
+    pub async fn get_group_files(&self, group: Uin, folder_id: Option<&str>) -> Result<GroupFileList> {
         self.inner.get_group_files(group, folder_id).await
     }
     /// 私聊文件下载直链。
-    pub async fn get_private_file_download_url(
-        &self,
-        user: Uin,
-        file_id: &str,
-        hash: Option<&str>,
-    ) -> Result<String> {
+    pub async fn get_private_file_download_url(&self, user: Uin, file_id: &str, hash: Option<&str>) -> Result<String> {
         self.inner.get_private_file_download_url(user, file_id, hash).await
     }
     /// 新建群文件夹，返回 folder id。
@@ -350,12 +313,7 @@ impl Bot {
         self.inner.create_group_folder(group, name).await
     }
     /// 重命名群文件夹。
-    pub async fn rename_group_folder(
-        &self,
-        group: Uin,
-        folder_id: &str,
-        new_name: &str,
-    ) -> Result<()> {
+    pub async fn rename_group_folder(&self, group: Uin, folder_id: &str, new_name: &str) -> Result<()> {
         self.inner.rename_group_folder(group, folder_id, new_name).await
     }
     /// 删除群文件夹。

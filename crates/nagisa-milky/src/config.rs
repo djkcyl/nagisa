@@ -36,12 +36,7 @@ impl MilkyConfig {
     /// 链式 builder 起点：再按需接 [`with_token`](Self::with_token) /
     /// [`with_mode`](Self::with_mode) / [`with_webhook`](Self::with_webhook)。
     pub fn new(ws_url: impl Into<String>) -> Self {
-        MilkyConfig {
-            ws_url: ws_url.into(),
-            access_token: None,
-            mode: MilkyMode::Ws,
-            webhook: None,
-        }
+        MilkyConfig { ws_url: ws_url.into(), access_token: None, mode: MilkyMode::Ws, webhook: None }
     }
 
     /// 设置访问令牌（链式）。

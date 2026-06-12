@@ -21,11 +21,7 @@ pub fn decode_message_value(v: &Value, peer: Peer) -> Message {
 }
 
 fn raw_segment(seg: &WireSegment) -> Segment {
-    Segment::Raw {
-        protocol: PROTO,
-        kind: seg.kind.clone(),
-        data: seg.data.clone(),
-    }
+    Segment::Raw { protocol: PROTO, kind: seg.kind.clone(), data: seg.data.clone() }
 }
 
 fn decode_segment(seg: &WireSegment, peer: Peer) -> Segment {
@@ -102,10 +98,7 @@ fn decode_segment(seg: &WireSegment, peer: Peer) -> Segment {
             url: seg.str_field("url"),
         },
         // `{"type":"json","data":{"data":"{...}"}}` → LightApp(与 encode 对称)。
-        "json" => Segment::LightApp {
-            app_name: None,
-            payload: seg.str_field("data").unwrap_or_default(),
-        },
+        "json" => Segment::LightApp { app_name: None, payload: seg.str_field("data").unwrap_or_default() },
         // `{"type":"xml","data":{"data":"<xml/>"[,"service_id":35]}}` → Xml(与 encode 对称)。
         "xml" => Segment::Xml {
             service_id: seg.i64_field("service_id").map(|v| v as i32),
@@ -131,14 +124,8 @@ fn decode_segment(seg: &WireSegment, peer: Peer) -> Segment {
         // OFFICIAL: https://github.com/botuniverse/onebot-11/blob/master/message/segment.md (§推荐好友/§推荐群)
         // data {type:"qq"|"group", id}——"qq"→Friend、"group"→Group;未知 type 保持 Raw。
         "contact" => match seg.str_field("type").as_deref() {
-            Some("qq") => Segment::Contact {
-                kind: ContactKind::Friend,
-                id: Uin(seg.i64_field("id").unwrap_or(0)),
-            },
-            Some("group") => Segment::Contact {
-                kind: ContactKind::Group,
-                id: Uin(seg.i64_field("id").unwrap_or(0)),
-            },
+            Some("qq") => Segment::Contact { kind: ContactKind::Friend, id: Uin(seg.i64_field("id").unwrap_or(0)) },
+            Some("group") => Segment::Contact { kind: ContactKind::Group, id: Uin(seg.i64_field("id").unwrap_or(0)) },
             _ => raw_segment(seg),
         },
         // OFFICIAL: https://github.com/botuniverse/onebot-11/blob/master/message/segment.md (§位置)
@@ -172,15 +159,9 @@ fn decode_segment(seg: &WireSegment, peer: Peer) -> Segment {
         "node" => {
             // go-cqhttp 自定义节点用 `uin`/`name`;标准用 `user_id`/`nickname`。
             let user = Uin(seg.i64_field("user_id").or_else(|| seg.i64_field("uin")).unwrap_or(0));
-            let name = seg
-                .str_field("nickname")
-                .or_else(|| seg.str_field("name"))
-                .unwrap_or_default();
-            let content = seg
-                .data
-                .get("content")
-                .map(|v| crate::decode::decode_message_value(v, peer))
-                .unwrap_or_default();
+            let name = seg.str_field("nickname").or_else(|| seg.str_field("name")).unwrap_or_default();
+            let content =
+                seg.data.get("content").map(|v| crate::decode::decode_message_value(v, peer)).unwrap_or_default();
             let time = seg.i64_field("time");
             Segment::Forward(Forward::Nodes {
                 nodes: vec![ForwardNode { user, name, content, time }],
@@ -211,15 +192,9 @@ fn decode_segment(seg: &WireSegment, peer: Peer) -> Segment {
         // Lagrange 内联键盘 / markdown / 长消息段(2026-06-04 已对照
         // Lagrange.OneBot/Message/Entity/*Segment.cs 核实)。
         // keyboard.content 是 JSON 对象(KeyboardData)——原样读取。
-        "keyboard" => Segment::Keyboard {
-            content: seg.data.get("content").cloned().unwrap_or(Value::Null),
-        },
-        "markdown" => Segment::Markdown {
-            content: seg.str_field("content").unwrap_or_default(),
-        },
-        "longmsg" => Segment::LongMsg {
-            id: seg.str_field("id").unwrap_or_default(),
-        },
+        "keyboard" => Segment::Keyboard { content: seg.data.get("content").cloned().unwrap_or(Value::Null) },
+        "markdown" => Segment::Markdown { content: seg.str_field("content").unwrap_or_default() },
+        "longmsg" => Segment::LongMsg { id: seg.str_field("id").unwrap_or_default() },
         // LLOneBot 私聊闪传文件卡片。与 encode 对称:
         //   data {title?, file_set_id, scene_type:<number>}。`title` 在 wire 上可能缺失
         //   (标题属性并非总能提取)→ None。
@@ -231,9 +206,7 @@ fn decode_segment(seg: &WireSegment, peer: Peer) -> Segment {
         },
         // NapCat 私聊小程序卡片:data {data:<miniapp JSON string>}。
         // ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageMiniAppSchema)。
-        "miniapp" => Segment::MiniApp {
-            payload: seg.str_field("data").unwrap_or_default(),
-        },
+        "miniapp" => Segment::MiniApp { payload: seg.str_field("data").unwrap_or_default() },
         // NapCat 私聊在线文件卡片:data {msgId, elementId, fileName, fileSize, isDir}。
         // ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageOnlineFileSchema)。
         "onlinefile" => Segment::OnlineFile {
@@ -245,9 +218,7 @@ fn decode_segment(seg: &WireSegment, peer: Peer) -> Segment {
         },
         // NapCat 私聊闪传卡片:data {fileSetId}。
         // ENDPOINT: NapNeko/NapCatQQ packages/napcat-onebot/types/message.ts (OB11MessageFlashTransferSchema)。
-        "flashtransfer" => Segment::FlashTransfer {
-            file_set_id: seg.str_field("fileSetId").unwrap_or_default(),
-        },
+        "flashtransfer" => Segment::FlashTransfer { file_set_id: seg.str_field("fileSetId").unwrap_or_default() },
         _ => raw_segment(seg),
     }
 }
@@ -278,17 +249,8 @@ fn decode_reply(seg: &WireSegment, peer: Peer) -> Segment {
     let onebot_id = seg.i64_field("id").map(|v| v as i32);
     // `peer` 是外层消息事件真实的会话对端,由 `decode_message` 串进来(与 Milky 对齐)。OneBot 的
     // `reply` wire 段只带被回复的 `id`,故 seq 保持 0;对端从上下文恢复,而非留作 `friend(0)` 兜底。
-    let id = MessageId {
-        peer,
-        seq: 0,
-        onebot_id,
-    };
-    Segment::Reply {
-        id,
-        sender: seg.i64_field("user_id").map(Uin),
-        time: None,
-        quoted: Vec::new(),
-    }
+    let id = MessageId { peer, seq: 0, onebot_id };
+    Segment::Reply { id, sender: seg.i64_field("user_id").map(Uin), time: None, quoted: Vec::new() }
 }
 
 /// 把 go-cqhttp 自定义转发的 `news` 字段解析成预览行。wire 形态是 `{"text": "..."}` 对象数组
@@ -309,10 +271,7 @@ fn media_from_recv(seg: &WireSegment) -> Media {
     let recv = ResourceRef {
         // LLOneBot 在 record/video/file 段上加了本地 `path`;在 wire 的 `file`/`filename` 之后回退到
         // 它作为 recv id(一个可再发的本地路径)。完整 data map(含 `path`)原样保留在 `raw` 里。
-        id: seg
-            .str_field("file")
-            .or_else(|| seg.str_field("filename"))
-            .or_else(|| seg.str_field("path")),
+        id: seg.str_field("file").or_else(|| seg.str_field("filename")).or_else(|| seg.str_field("path")),
         url: seg.str_field("url"),
         raw: Value::Object(seg.data.clone()),
     };
@@ -368,8 +327,5 @@ fn parse_cq_segment(body: &str, peer: Peer) -> Segment {
 }
 
 fn cq_unescape(s: &str) -> String {
-    s.replace("&#44;", ",")
-        .replace("&#91;", "[")
-        .replace("&#93;", "]")
-        .replace("&amp;", "&")
+    s.replace("&#44;", ",").replace("&#91;", "[").replace("&#93;", "]").replace("&amp;", "&")
 }

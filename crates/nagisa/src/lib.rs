@@ -50,140 +50,13 @@ pub use app::App;
 // 分发引擎、`Bot` 句柄、两个传输 trait、`FromContext` 提取器、matcher DSL、注册表
 // 和服务生命周期。在 crate 根重新导出,业务代码不直接点 `nagisa_core` 路径。
 pub use nagisa_core::{
+    // 出站消息日志器:每条 bot 发出的消息都会喂给已注册的日志器(多订阅)。
+    add_outgoing_logger,
+    awake,
+    awake_silent,
     // 注册表(inventory)+ 插件元数据。`registered_triggers` 报的是已解析到插件的点分 key
     // (宏先发空 key,解析期按 module_path 关联补上)。
     collect_into,
-    registered_plugins,
-    registered_triggers_resolved as registered_triggers,
-    Category,
-    PluginMeta,
-    // 分发引擎入口。
-    run_dispatch,
-    // `Bot` 句柄。它的固有方法就是业务调用的动作面;支撑这些方法、由适配器实现的 trait
-    // 在 [`adapter`]。
-    Bot,
-    // 出站消息日志器:每条 bot 发出的消息都会喂给已注册的日志器(多订阅)。
-    add_outgoing_logger,
-    // 带类型的命令参数解析(Args<T> 类型;#[derive(Args)] 是宏)。
-    ArgError,
-    ArgToken,
-    Args,
-    ArgText,
-    // 参数元数据(#[derive(Args)] 生成,供 help 自动生成用法)。
-    ArgKind,
-    ArgSpec,
-    ArgsMeta,
-    FromArg,
-    ParseArgs,
-    Captures,
-    Command,
-    CommandArg,
-    // 在匹配链上取元素的提取器,与 waiter 共用同一套类型:同一个 `Image` 既读内联图片槽,
-    // 也是 `recv::<Image>` 的返回(「内联或追问是同一类型」)。`Option<At>`/`Option<Image>`
-    // 即可选。
-    At,
-    Image,
-    TriggerSpec,
-    TriggerMeta,
-    TriggerKind,
-    // 每事件上下文 + 提取器(FromContext)。
-    Ctx,
-    // 开发/诊断标记(配 `App::debug()`):把静默跳过变成 `[dev]` WARN,并对 `Args<T>`
-    // 解析失败自动回一条用法提示。
-    DevMode,
-    // 事件触发器(`#[event(Kind)]`):EventKind 选择器 + 细粒度的带类型事件提取器(只有
-    // Nudge 做自身事件过滤 —— Recall 原样投递,让 handler 自己决定防撤回策略)。
-    AdminChange,
-    EventKind,
-    FriendAdd,
-    FriendRequest,
-    GroupCardChange,
-    GroupJoinRequest,
-    Honor,
-    LuckyKing,
-    MemberJoin,
-    MemberLeave,
-    Mute,
-    Nudge,
-    Recall,
-    // 生命周期事件提取器(`#[event(Connect/Disconnect/Ready/BotOnline/BotOffline/Heartbeat)]`)。
-    Connect,
-    Disconnect,
-    Ready,
-    BotOnline,
-    BotOffline,
-    Heartbeat,
-    // 运行期命令开关。
-    EnabledOverrides,
-    EnabledSet,
-    SwitchKey,
-    EventPeer,
-    EventSource,
-    Extracted,
-    FromContext,
-    GroupMessage,
-    // Handler 抽象。
-    Handler,
-    HandlerOutcome,
-    HandlerResult,
-    // Matcher(一个 regex 支撑的触发器;command([..]) 是字面量糖,slots(..) 是带类型的头部)。
-    Matcher,
-    ParsedCommand,
-    // 带类型的具名槽 matcher:HEAD 侧,与 TAIL 侧的 Args<T> 对称(#[derive(Slots)] 是宏)。
-    Flank,
-    FromSlots,
-    FromTailText,
-    NamedCaptures,
-    SlotSpec,
-    SlotValue,
-    Slots,
-    Tail,
-    PrivateMessage,
-    Reject,
-    Reply,
-    ReplyMsg,
-    Router,
-    Sender,
-    // 服务生命周期(Supervisor + DAG)。
-    Service,
-    ServiceBus,
-    // 根取消/停机信号。
-    ShutdownToken,
-    State,
-    Supervisor,
-    ToMe,
-    // 洋葱中间件(链路)。
-    Flow,
-    Middleware,
-    Next,
-    // 内置限流器(经 App::layer 选用)。
-    RateLimit,
-    RateLimitScope,
-    // 中断引擎(Session/Waiter/Scope)。
-    FlightGuard,
-    Scope,
-    Session,
-    WaitFlow,
-    Waiter,
-    WaiterDepth,
-    WaiterStore,
-    // 跨会话 rendezvous(token/bind:此处签发,彼处认领)。
-    Rendezvous,
-    RendezvousSnapshot,
-    // 冷却门控(默认 UserGlobal、窗口内 max_exec)+ 命令式的 Cd 注入句柄。
-    Cd,
-    CdKey,
-    Cooldown,
-    CooldownScope,
-    CooldownStore,
-    TriggerId,
-    // 带类型的目标选择器(bot.group(g).member(u).mute(..))。
-    FriendRef,
-    GroupRef,
-    MemberRef,
-    // 规则/权限组合代数(& | !)+ 内置规则。
-    Rule,
-    Superusers,
     from_user,
     group_admin,
     group_only,
@@ -191,16 +64,143 @@ pub use nagisa_core::{
     in_group,
     keyword,
     private,
+    registered_plugins,
+    registered_triggers_resolved as registered_triggers,
+    replying,
+    // 分发引擎入口。
+    run_dispatch,
     superuser,
-    to_me,
     // 总闸 / 休眠的叶子构造器 + 否决时的回复通道。
     switch,
-    awake,
-    awake_silent,
-    replying,
+    to_me,
+    // 事件触发器(`#[event(Kind)]`):EventKind 选择器 + 细粒度的带类型事件提取器(只有
+    // Nudge 做自身事件过滤 —— Recall 原样投递,让 handler 自己决定防撤回策略)。
+    AdminChange,
+    // 带类型的命令参数解析(Args<T> 类型;#[derive(Args)] 是宏)。
+    ArgError,
+    // 参数元数据(#[derive(Args)] 生成,供 help 自动生成用法)。
+    ArgKind,
+    ArgSpec,
+    ArgText,
+    ArgToken,
+    Args,
+    ArgsMeta,
+    // 在匹配链上取元素的提取器,与 waiter 共用同一套类型:同一个 `Image` 既读内联图片槽,
+    // 也是 `recv::<Image>` 的返回(「内联或追问是同一类型」)。`Option<At>`/`Option<Image>`
+    // 即可选。
+    At,
+    // `Bot` 句柄。它的固有方法就是业务调用的动作面;支撑这些方法、由适配器实现的 trait
+    // 在 [`adapter`]。
+    Bot,
+    BotOffline,
+    BotOnline,
+    Captures,
+    Category,
+    // 冷却门控(默认 UserGlobal、窗口内 max_exec)+ 命令式的 Cd 注入句柄。
+    Cd,
+    CdKey,
+    Command,
+    CommandArg,
+    // 生命周期事件提取器(`#[event(Connect/Disconnect/Ready/BotOnline/BotOffline/Heartbeat)]`)。
+    Connect,
+    Cooldown,
+    CooldownScope,
+    CooldownStore,
+    // 每事件上下文 + 提取器(FromContext)。
+    Ctx,
+    // 开发/诊断标记(配 `App::debug()`):把静默跳过变成 `[dev]` WARN,并对 `Args<T>`
+    // 解析失败自动回一条用法提示。
+    DevMode,
+    Disconnect,
+    // 运行期命令开关。
+    EnabledOverrides,
+    EnabledSet,
+    EventKind,
+    EventPeer,
+    EventSource,
+    Extracted,
+    // 带类型的具名槽 matcher:HEAD 侧,与 TAIL 侧的 Args<T> 对称(#[derive(Slots)] 是宏)。
+    Flank,
+    // 中断引擎(Session/Waiter/Scope)。
+    FlightGuard,
+    // 洋葱中间件(链路)。
+    Flow,
+    FriendAdd,
+    // 带类型的目标选择器(bot.group(g).member(u).mute(..))。
+    FriendRef,
+    FriendRequest,
+    FromArg,
+    FromContext,
+    FromSlots,
+    FromTailText,
     GateReply,
+    GroupCardChange,
+    GroupJoinRequest,
+    GroupMessage,
+    GroupRef,
+    // Handler 抽象。
+    Handler,
+    HandlerOutcome,
+    HandlerResult,
+    Heartbeat,
+    Honor,
+    Image,
     KillSwitch,
+    LuckyKing,
+    // Matcher(一个 regex 支撑的触发器;command([..]) 是字面量糖,slots(..) 是带类型的头部)。
+    Matcher,
+    MemberJoin,
+    MemberLeave,
+    MemberRef,
+    Middleware,
+    Mute,
+    NamedCaptures,
+    Next,
+    Nudge,
+    ParseArgs,
+    ParsedCommand,
+    PluginMeta,
+    PrivateMessage,
+    // 内置限流器(经 App::layer 选用)。
+    RateLimit,
+    RateLimitScope,
+    Ready,
+    Recall,
+    Reject,
+    // 跨会话 rendezvous(token/bind:此处签发,彼处认领)。
+    Rendezvous,
+    RendezvousSnapshot,
+    Reply,
+    ReplyMsg,
+    Router,
+    // 规则/权限组合代数(& | !)+ 内置规则。
+    Rule,
+    Scope,
+    Sender,
+    // 服务生命周期(Supervisor + DAG)。
+    Service,
+    ServiceBus,
+    Session,
+    // 根取消/停机信号。
+    ShutdownToken,
     SleepState,
+    SlotSpec,
+    SlotValue,
+    Slots,
+    State,
+    Superusers,
+    Supervisor,
+    SwitchKey,
+    Tail,
+    ToMe,
+    TriggerId,
+    TriggerKind,
+    TriggerMeta,
+    TriggerSpec,
+    WaitFlow,
+    Waiter,
+    WaiterDepth,
+    WaiterStore,
 };
 
 /// 适配器作者用的管线:新协议适配器要实现的出站动作 trait —— `ActionInvoker`
@@ -236,10 +236,9 @@ pub use nagisa_types::vendor::Vendor;
 // 实体类型 —— `Bot` 方法返回的统一领域结构。handler 若要写自己的 `Result<T>`
 // (如 `nagisa::Result<nagisa::UserInfo>`)需要它们在根可见,所以全部精选到这里。
 pub use nagisa_types::entity::{
-    AiCharacter, AiCharacterGroup, Announcement, Business, EssenceMessage, FileFetch, FileMeta,
-    FriendCategory, FriendCategoryList, FriendGroup, FriendInfo, FriendStatus, GroupFileList,
-    GroupFolder, GroupInfo, HonorList, HonorMember, ImplStatus, MemberInfo, ProfileLiker, Rkey,
-    Role, Sex, UserInfo,
+    AiCharacter, AiCharacterGroup, Announcement, Business, EssenceMessage, FileFetch, FileMeta, FriendCategory,
+    FriendCategoryList, FriendGroup, FriendInfo, FriendStatus, GroupFileList, GroupFolder, GroupInfo, HonorList,
+    HonorMember, ImplStatus, MemberInfo, ProfileLiker, Rkey, Role, Sex, UserInfo,
 };
 
 /// `ImplInfo`:`get_impl_info()` 的返回 —— 已连接实现的身份(app 名/版本、QQ 协议
@@ -252,7 +251,7 @@ pub use nagisa_types::error::{ActionErrorKind, Error, Result, TransportError};
 /// [`Error`],对标 `anyhow::bail!`。见 [`Error::action`]。
 pub use nagisa_types::bail;
 pub use nagisa_types::event::{
-    Event, HonorKind, Meta, MessageEvent, Notice, RawEvent, ReactionKind, Request, RequestToken,
+    Event, HonorKind, MessageEvent, Meta, Notice, RawEvent, ReactionKind, Request, RequestToken,
 };
 pub use nagisa_types::id::{MessageId, Peer, Scene, Uin};
 pub use nagisa_types::message::{Message, MessageExt, Msg};
@@ -396,7 +395,7 @@ pub mod prelude {
     // 自定义参数解析:`ParseArgs` trait 及其 token/error 类型,加上字段类型 trait
     // `FromArg` —— 给手写 `Args<T>` impl(而非 `#[derive(Args)]`)的 handler 用。
     // `ArgSpec`/`ArgKind`/`ArgsMeta`:参数元数据,help 据此自动生成用法。
-    pub use crate::{ArgError, ArgKind, ArgSpec, ArgsMeta, ArgToken, FromArg, ParseArgs};
+    pub use crate::{ArgError, ArgKind, ArgSpec, ArgToken, ArgsMeta, FromArg, ParseArgs};
 
     // 带类型的具名槽 matcher(HEAD 侧,与 Args<T> 对称):`Tail` 通配载荷,以及手写头部用的
     // `FromSlots`/`SlotValue` trait。(`Slots<T>` 本身随上面 `#[derive(Slots)]` 宏一起带入 ——
@@ -418,18 +417,16 @@ pub mod prelude {
     // handler 签名按类型点名的常用提取器,加上自定义 `FromContext` impl 作者会用到的
     // 提取结果类型(`Extracted`/`Reject`)。
     pub use crate::{
-        ArgText, At, Captures, Command, CommandArg, Ctx, EventPeer, Extracted, FromContext,
-        GroupMessage, HandlerResult, Image, PrivateMessage, Reject, Reply, ReplyMsg, Sender, State,
-        ToMe,
+        ArgText, At, Captures, Command, CommandArg, Ctx, EventPeer, Extracted, FromContext, GroupMessage,
+        HandlerResult, Image, PrivateMessage, Reject, Reply, ReplyMsg, Sender, State, ToMe,
     };
 
     // 规则/权限组合子 + 内置规则(用 `&` / `|` / `!` 组合)。`Superusers` 是 `superuser()`
     // 背后注入的集合 —— 需要手动判断(比如按是否 superuser 分支而非直接门控)的 handler 经
     // `State<Superusers>` 点名它。
     pub use crate::{
-        awake, awake_silent, from_user, group_admin, group_only, group_owner, in_group, keyword,
-        private, replying, superuser, switch, to_me, GateReply, KillSwitch, Rule,
-        SleepState, Superusers,
+        awake, awake_silent, from_user, group_admin, group_only, group_owner, in_group, keyword, private, replying,
+        superuser, switch, to_me, GateReply, KillSwitch, Rule, SleepState, Superusers,
     };
 
     // 冷却门控(经 `Cooldown::into_rule` 变成 `Rule`)+ 命令式的 `Cd` 注入句柄。
@@ -446,23 +443,22 @@ pub mod prelude {
 
     // 插件元数据(给 help/菜单插件用)+ 运行期开关。
     pub use crate::{
-        collect_into, registered_plugins, registered_triggers, Category, EnabledSet, EventKind,
-        PluginMeta, SwitchKey, TriggerKind, TriggerMeta, TriggerSpec,
+        collect_into, registered_plugins, registered_triggers, Category, EnabledSet, EventKind, PluginMeta, SwitchKey,
+        TriggerKind, TriggerMeta, TriggerSpec,
     };
 
     // 事件触发提取器(`#[event(Kind)]` handler 签名按类型点名),含生命周期:
     // Connect/Disconnect(传输)、Ready(框架)、BotOnline/BotOffline(账号)、Heartbeat。
     pub use crate::{
-        AdminChange, BotOffline, BotOnline, Connect, Disconnect, FriendAdd, FriendRequest,
-        GroupCardChange, GroupJoinRequest, Heartbeat, Honor, LuckyKing, MemberJoin, MemberLeave,
-        Mute, Nudge, Ready, Recall,
+        AdminChange, BotOffline, BotOnline, Connect, Disconnect, FriendAdd, FriendRequest, GroupCardChange,
+        GroupJoinRequest, Heartbeat, Honor, LuckyKing, MemberJoin, MemberLeave, Mute, Nudge, Ready, Recall,
     };
 
     // 统一领域模型。
     pub use crate::{
-        ActionErrorKind, Capability, Context, Error, Event, Forward, ForwardNode, FriendInfo,
-        GroupInfo, Media, MemberInfo, Message, MessageEvent, MessageExt, MessageId, Msg, Notice,
-        Peer, Protocol, ReactionKind, Request, ResourceSource, Result, Scene, Segment, Uin,
+        ActionErrorKind, Capability, Context, Error, Event, Forward, ForwardNode, FriendInfo, GroupInfo, Media,
+        MemberInfo, Message, MessageEvent, MessageExt, MessageId, Msg, Notice, Peer, Protocol, ReactionKind, Request,
+        ResourceSource, Result, Scene, Segment, Uin,
     };
 
     // 适配器配置(feature 门控)。

@@ -8,9 +8,13 @@ repository.workspace = true
 description = "Nagisa typesetting engine: markup / builder documents to images (PNG / WebP)"
 
 [dependencies]
-cosmic-text = { workspace = true }
+# 只为开 logging:不开时 icu(parley 的断行底层)的「缺 cjdict 分词数据」提示是裸 eprintln,
+# 每次渲染中文都刷 stderr;开了走 log 门面,无人订阅即静默。提示本身无害(中文断行不靠词典)。
+icu_provider = { version = "2.2.0", default-features = false, features = ["logging"] }
 image = { workspace = true, features = ["png", "webp", "jpeg", "gif"] }
+parley = { workspace = true }
 ruzstd = { workspace = true }
+swash = { workspace = true }
 thiserror = { workspace = true }
 tiny-skia = { workspace = true }
 unicode-properties = { workspace = true }

@@ -4,7 +4,7 @@
 [![docs.rs](https://img.shields.io/docsrs/nagisa-render?style=flat-square&logo=docsdotrs)](https://docs.rs/nagisa-render)
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square)](#license)
 
-把一段类 Markdown 的标记文本,或一份 Rust 构建器拼出的文档,排版渲染成图片字节(PNG / WebP)。纯 CPU 管线:cosmic-text 整形(断行 / 字体回退 / CJK + 拉丁 + emoji 混排)+ tiny-skia 光栅,不依赖浏览器、GPU 或系统字体,内置中文字体开箱出图。是 [nagisa](https://github.com/djkcyl/nagisa) 框架的排版引擎,也可单独使用。
+把一段类 Markdown 的标记文本,或一份 Rust 构建器拼出的文档,排版渲染成图片字节(PNG / WebP)。纯 CPU 管线:parley 整形(断行 / 字体回退 / CJK + 拉丁 + emoji 混排)+ tiny-skia / swash 光栅,不依赖浏览器、GPU 或系统字体,内置中文字体开箱出图。是 [nagisa](https://github.com/djkcyl/nagisa) 框架的排版引擎,也可单独使用。
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/djkcyl/nagisa/master/render-showcase.webp" alt="全功能样张" width="640">
@@ -53,7 +53,7 @@ let png = render_document(&doc, &RenderOptions::default())?;
 
 ## 能排什么
 
-- **块级**:标题(1–6 级)、段落、有序 / 无序列表(可嵌套、起始序号可设)、任务列表(`✓` / `□`)、引用(可嵌套)、行内与块级代码(语言标签渲在盒角;块级代码带轻量语法上色——rust / json / toml / python / js·ts / shell / c·cpp,词分关键字 / 字面量 / 字符串 / 注释四类,认不出的语言整块默认色)、分割线、表格、多栏并排(按权重分宽)、面板(底色 / 边框 / 圆角 / 内边距 / 投影的卡片容器,作并排栏整栏时自动拉齐行高)、块级图、进度条。
+- **块级**:标题(1–6 级)、段落、有序 / 无序列表(可嵌套、起始序号可设)、任务列表(`✓` / `□`)、引用(可嵌套,首行衬淡强调色引号题饰)、行内与块级代码(块级盒顶有题头栏:`</>` 符 + 语言标签;块级代码带轻量语法上色——rust / json / toml / python / js·ts / shell / c·cpp,词分关键字 / 字面量 / 字符串 / 注释四类,认不出的语言整块默认色)、分割线、表格、多栏并排(按权重分宽)、面板(底色 / 边框 / 圆角 / 内边距 / 投影的卡片容器,作并排栏整栏时自动拉齐行高)、块级图、进度条。
 - **行内**:粗 / 细 / 任意字重(100–900 真字形)、斜体、下划线、删除线、文字色、高亮 / 自定底色、字号倍率、字族切换(黑 / 宋 / 楷 / 等宽 / 具名)、链接(取文字按强调色渲染)、圈注与着重点(整段或逐字,可定径定色)、边注(挂行外,不挤布局)、文字阴影、硬换行、反斜杠转义。
 - **表格**:自适应列宽、按列限宽、铺满可用宽(`expand`)、窄表整表对齐(`table_align`)、各列对齐、富文本单元格(`head_rich` / `row_rich`)、按列 / 行 / 格设文字样式与背景色、紧凑度(`pad_x` / `pad_y`)与网格线(外框 / 横 / 竖)可调、表头浅底开关。
 - **图片**:PNG / JPEG / WebP / GIF 解码,缩放(像素 / 百分比)、对齐、富文本图注,外加装饰层——圆角裁切、边框、投影、角标、水印(画在图面上,不改布局)。
@@ -131,11 +131,11 @@ emoji 表现序列(含 VS16 升级、肤色修饰、ZWJ 合字、键帽、旗帜
 
 ## 样张
 
-`examples/gallery.rs` 按特性渲样张到 `out/*.png`:
+`examples/gallery.rs` 渲全功能样张到 `out/`(`full.png` 亮、`full-dark.png` 暗、`full.webp`):
 
 ```sh
 cargo run -p nagisa-render --example gallery
-# 衬线 / 楷体样张要真字形的话,指一个放字体的目录:
+# 衬线 / 楷体要真字形的话,指一个放字体的目录:
 GALLERY_FONTS=path/to/fonts cargo run -p nagisa-render --example gallery
 ```
 

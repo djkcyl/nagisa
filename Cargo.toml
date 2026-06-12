@@ -51,7 +51,8 @@ inventory = "0.3.24"
 nagisa-milky = { version = "0.7.0", path = "crates/nagisa-milky" }
 nagisa-onebot = { version = "0.7.0", path = "crates/nagisa-onebot" }
 nagisa-render = { version = "0.7.0", path = "crates/nagisa-render" }
-cosmic-text = "0.19.0"
+parley = "0.10"
+swash = "0.2"
 hmac = "0.13.0"
 image = { version = "0.25.10", default-features = false }
 ruzstd = "0.8.3"

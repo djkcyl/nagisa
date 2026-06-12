@@ -340,7 +340,7 @@ impl StyleBuilder {
         self
     }
     /// 字号倍率(相对基准)。非有限或 ≤ 0 忽略(保持默认),与标记前端一致——
-    /// 避免 0 字号把 cosmic-text 整形拖进死循环。
+    /// 0 字号在整形里没有意义,挡在入口。
     pub fn size(&mut self, mult: f32) -> &mut Self {
         if mult.is_finite() && mult > 0.0 {
             self.style.size = mult;

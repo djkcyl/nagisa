@@ -1,11 +1,13 @@
 //! 版式引擎 —— 把文档 IR 排成一份**显示列表**(带物理像素坐标的字形 / 矩形 / 图片),交给
-//! `paint` 光栅化。纵向块流:维护游标 `y`,逐块测高、定位。行内排版交给 cosmic-text(整形 /
+//! `paint` 光栅化。纵向块流:维护游标 `y`,逐块测高、定位。行内排版交给 parley(整形 /
 //! 断行 / 字体回退 / CJK+拉丁混排 / 对齐)。
 //!
 //! **单位**:所有逻辑尺寸(宽 / 内边距 / 字号)在此乘 `scale` 换成设备像素,即一切坐标都是
 //! 物理像素。块容器(引用 / 列表项 / 栏 / 单元格)递归排版时收窄可用宽。
 
-use cosmic_text::{Attrs, Buffer, Family, Metrics, Shaping, Style, Weight};
+use parley::layout::{Cluster, PositionedLayoutItem};
+use parley::style::{FontFamily, FontStyle, FontWeight, LineHeight, StyleProperty};
+use parley::{Alignment, AlignmentOptions};
 
 use crate::error::{Error, Result};
 use crate::font::FontHandle;
@@ -21,7 +23,7 @@ use crate::theme::{RenderOptions, Theme};
 const MAX_DIM: u32 = 30_000;
 /// 画布总像素上限(~40MP,约 160MB RGBA):防 OOM,也保证 i32 像素下标不溢出。
 const MAX_AREA: u64 = 40_000_000;
-/// 字号(设备像素)安全下限:必须 > 0,否则 cosmic-text 整形零步进会死循环。
+/// 字号(设备像素)安全下限:必须 > 0,零字号在整形/栅格里没有意义且易出零步进死循环。
 const MIN_PX: f32 = 1.0;
 /// 字号(设备像素)安全上限:防字形栅格(zeno)整数溢出与单字撑爆画布。
 const MAX_PX: f32 = 2_000.0;
@@ -49,8 +51,8 @@ pub(crate) struct Layout {
 
 /// 一条绘制原语(坐标均为物理像素)。
 pub(crate) enum DisplayItem {
-    /// 一批字形(各自带颜色,可带文字阴影)。
-    Glyphs(Vec<PlacedGlyph>),
+    /// 一批字形(各自带颜色,可带文字阴影),附本批用到的字体表。
+    Glyphs(GlyphBatch),
     /// 实心(可圆角)矩形:背景 / 高亮 / 分割线 / 引用条 / 代码底 / 角标底板 / 下划删除等。
     /// 绘制层见 [`RectLayer`]。
     Rect { x: f32, y: f32, w: f32, h: f32, color: Color, radius: f32, layer: RectLayer },
@@ -62,6 +64,12 @@ pub(crate) enum DisplayItem {
     StrokeRect(StrokeItem),
     /// 描边椭圆:文字圈注。画在图片之后、字形之前(与 [`Self::StrokeRect`] 同层)。
     Ellipse { cx: f32, cy: f32, rx: f32, ry: f32, width: f32, color: Color },
+    /// 引号图标(两枚「6」形反引号,矢量自绘):引用块的题饰。`x`/`y` 为图标盒左上角,
+    /// `size` 为盒高(物理像素)。与 [`Self::Ellipse`] 同层(图后字前,淡色衬在文字底下)。
+    QuoteMark { x: f32, y: f32, size: f32, color: Color },
+    /// 代码符号图标(`</>`,矢量描边):代码块题头栏用。`x`/`y` 为图标盒左上角,
+    /// `size` 为盒高(整体宽约 `size * 1.55`)。与 [`Self::Ellipse`] 同层。
+    CodeMark { x: f32, y: f32, size: f32, color: Color },
 }
 
 /// 投影绘制参数(均物理像素;`x`/`y` 已含偏移)。
@@ -97,9 +105,40 @@ pub(crate) enum RectLayer {
     Over,
 }
 
-/// 定位好的字形:缓存键(给 SwashCache 取位图)+ 笔位(x)/基线(y)+ 颜色 + 可选阴影。
+/// 一批定位好的字形 + 它们引用的字体表(`PlacedGlyph::font` 是 `fonts` 的下标)。
+pub(crate) struct GlyphBatch {
+    pub fonts: Vec<GlyphFont>,
+    pub glyphs: Vec<PlacedGlyph>,
+}
+
+/// 字形栅格所需的字体面貌:字体数据 + 字号 + 可变轴坐标(字重由此体现)+ 合成参数
+/// (仿斜角度 / 假粗)。一段 GlyphRun 一份,块内去重。
+pub(crate) struct GlyphFont {
+    pub font: parley::FontData,
+    pub size: f32,
+    pub coords: Vec<i16>,
+    pub skew: Option<f32>,
+    pub embolden: bool,
+}
+
+/// parley 笔刷:墨色 + 装饰条目下标(`usize::MAX` = 无装饰)。整形时随样式区间下发,
+/// 从 GlyphRun 取回,装饰信息就跟着字形走。
+#[derive(Clone, PartialEq, Debug)]
+pub(crate) struct Ink {
+    pub color: Color,
+    pub deco: usize,
+}
+
+impl Default for Ink {
+    fn default() -> Self {
+        Self { color: Color::rgba(0, 0, 0, 255), deco: usize::MAX }
+    }
+}
+
+/// 定位好的字形:字体表下标 + 字形号 + 笔位(x)/基线(y)+ 颜色 + 可选阴影。
 pub(crate) struct PlacedGlyph {
-    pub cache_key: cosmic_text::CacheKey,
+    pub font: u32,
+    pub id: u16,
     pub x: i32,
     pub y: i32,
     pub color: Color,
@@ -260,7 +299,7 @@ impl LayoutCtx<'_> {
         y: f32,
         w: f32,
     ) -> f32 {
-        let (glyphs, decos, h) = shape_text(
+        let (batch, decos, h) = shape_text(
             &self.opts.fonts,
             &self.opts.theme,
             inlines,
@@ -273,8 +312,8 @@ impl LayoutCtx<'_> {
             y,
         );
         self.items.extend(decos);
-        if !glyphs.is_empty() {
-            self.items.push(DisplayItem::Glyphs(glyphs));
+        if !batch.glyphs.is_empty() {
+            self.items.push(DisplayItem::Glyphs(batch));
         }
         h
     }
@@ -349,6 +388,7 @@ impl LayoutCtx<'_> {
     }
 
     /// 引用:左侧强调色竖条 + 内缩,递归排内部块;竖条高度按内容算(内容排完再补)。
+    /// 首行背后衬一枚淡强调色的大引号(水印式题饰,不占布局)。
     fn quote(&mut self, inner: &[Block], x: f32, w: f32) {
         let (base, sc) = (self.opts.theme.base_size, self.sc);
         self.y += base * sc * 0.3;
@@ -357,6 +397,13 @@ impl LayoutCtx<'_> {
         let ix = x + bar_w + gap;
         let iw = (w - bar_w - gap).max(1.0);
         let y0 = self.y;
+        let a = self.opts.theme.accent;
+        self.items.push(DisplayItem::QuoteMark {
+            x: ix - gap * 0.3,
+            y: y0 - base * sc * 0.15,
+            size: safe_px(base * sc) * 1.9,
+            color: Color::rgba(a.r, a.g, a.b, 34),
+        });
         for (i, b) in inner.iter().enumerate() {
             self.block(b, ix, iw, i == 0);
         }
@@ -373,15 +420,23 @@ impl LayoutCtx<'_> {
         self.y += base * sc * 0.3;
     }
 
-    /// 代码块:等宽 + 圆角底色盒 + 内边距 + 软换行;有语言标签则在盒内右上角渲染成小字。
+    /// 代码块:等宽 + 圆角底色盒 + 内边距 + 软换行。盒顶一道题头栏(底色比盒身深一档):
+    /// 左侧一枚 `</>` 代码符标明块的身份,右侧语言标签(可缺)。
     fn code(&mut self, lang: Option<&str>, text: &str, x: f32, w: f32) {
         let (base, sc) = (self.opts.theme.base_size, self.sc);
         self.y += base * sc * 0.4;
         let pad = base * sc * 0.45;
         let ix = x + pad;
         let iw = (w - 2.0 * pad).max(1.0);
+        let radius = 8.0 * sc;
         let y_bg = self.y;
-        let mut y_text = y_bg + pad;
+        let default_px = safe_px(base * sc);
+        // 题头栏:左 `</>` 图标 + 右语言标签(可缺)。栏内容高按标签行高与图标的较高者,
+        // 无标签时也按标签行高算——有无语言的代码块栏高一致。
+        let bar_pad = pad * 0.4;
+        let icon = default_px * 0.62;
+        let tag_line = default_px * 0.72 * self.opts.theme.line_height;
+        let mut content_h = tag_line.max(icon);
         if let Some(l) = lang.map(str::trim).filter(|l| !l.is_empty()) {
             let tag = vec![Inline::Text {
                 text: l.to_string(),
@@ -392,9 +447,17 @@ impl LayoutCtx<'_> {
                     ..TextStyle::default()
                 },
             }];
-            let th = self.emit_text(&tag, Align::Right, base, false, ix, y_bg + pad * 0.5, iw);
-            y_text = y_bg + pad * 0.5 + th + base * sc * 0.1;
+            let th = self.emit_text(&tag, Align::Right, base, false, ix, y_bg + bar_pad, iw);
+            content_h = content_h.max(th);
         }
+        let bar_h = content_h + bar_pad * 2.0;
+        self.items.push(DisplayItem::CodeMark {
+            x: ix,
+            y: y_bg + (bar_h - icon) / 2.0,
+            size: icon,
+            color: self.opts.theme.muted,
+        });
+        let y_text = y_bg + bar_h + pad * 0.6;
         // 语法上色:按语言切词,词上色、空当默认色;认不出的语言整块默认色。
         let mono = |seg: &str, color: Color| Inline::Text {
             text: seg.to_string(),
@@ -435,7 +498,30 @@ impl LayoutCtx<'_> {
             w,
             h: bg_h,
             color: self.opts.theme.code_bg,
-            radius: 8.0 * sc,
+            radius,
+            layer: RectLayer::Under,
+        });
+        // 题头栏底色压在盒底之上(同层后画居上):上沿随盒圆角,下沿取方——
+        // 圆角矩形 + 方角矩形盖住其下半,两段同色不透明,接缝无痕。
+        let bar_bg = mix(self.opts.theme.code_bg, self.opts.theme.text, 0.07);
+        let bar_h = bar_h.min(bg_h);
+        self.items.push(DisplayItem::Rect {
+            x,
+            y: y_bg,
+            w,
+            h: bar_h,
+            color: bar_bg,
+            radius,
+            layer: RectLayer::Under,
+        });
+        let r = radius.min(bar_h / 2.0);
+        self.items.push(DisplayItem::Rect {
+            x,
+            y: y_bg + bar_h - r,
+            w,
+            h: r,
+            color: bar_bg,
+            radius: 0.0,
             layer: RectLayer::Under,
         });
         self.y = y_bg + bg_h + base * sc * 0.4;
@@ -1099,8 +1185,10 @@ fn read_image_file(p: &std::path::Path) -> Option<Vec<u8>> {
     Some(buf)
 }
 
-/// 一个 span 的装饰信息(按 `Attrs::metadata` 下标索引回查)。
+/// 一个 span 的装饰信息(按 [`Ink::deco`] 下标索引回查)。
 struct SpanDeco {
+    /// 该 span 在富文本里的字节区间(逐字圈注 / 着重点按簇游走时定位用)。
+    range: std::ops::Range<usize>,
     underline: bool,
     strike: bool,
     highlight: Option<Color>,
@@ -1131,7 +1219,7 @@ struct DotDeco {
     each: bool,
 }
 
-/// 用 cosmic-text 整形一段行内内容,产出定位好的字形、装饰矩形与该块高度(物理像素)。
+/// 用 parley 整形一段行内内容,产出定位好的字形批、装饰矩形与该块高度(物理像素)。
 #[allow(clippy::too_many_arguments)]
 fn shape_text(
     fonts: &FontHandle,
@@ -1144,17 +1232,10 @@ fn shape_text(
     width: f32,
     x_left: f32,
     y_top: f32,
-) -> (Vec<PlacedGlyph>, Vec<DisplayItem>, f32) {
-    let line_mult = theme.line_height;
+) -> (GlyphBatch, Vec<DisplayItem>, f32) {
     let default_px = safe_px(base_logical * sc);
-    // metadata=usize::MAX ⇒ 无装饰(默认 / 换行用)。
-    let default_attrs = base_attrs()
-        .family(Family::Name(&theme.font_sans))
-        .color(to_cosmic(theme.text))
-        .metrics(Metrics::new(default_px, default_px * line_mult))
-        .metadata(usize::MAX);
 
-    // 边注与正文分离:边注不进主 buffer——行宽与居中 / 对齐都按正文算,边注另行
+    // 边注与正文分离:边注不进主布局——行宽与居中 / 对齐都按正文算,边注另行
     // 整形后挂到首 / 末行内容盒外侧。整段只有边注没有正文时,边注失去锚点,按普通
     // 内容排(aside 标记被整形忽略,不致丢字)。
     use crate::model::AsideSide;
@@ -1180,48 +1261,16 @@ fn shape_text(
         main_part = inlines.to_vec();
     }
 
-    let (spans, decos) = build_spans(&main_part, theme, base_logical, base_bold, sc, &default_attrs);
+    let rich = build_rich(&main_part, theme, base_logical, base_bold, sc);
 
-    fonts.with_system(|fs| {
-        let mut buf = Buffer::new(fs, Metrics::new(default_px, default_px * line_mult));
-        buf.set_size(Some(width), None);
-        buf.set_rich_text(
-            spans.iter().map(|(t, a)| (*t, a.clone())),
-            &default_attrs,
-            Shaping::Advanced,
-            Some(align_to_cosmic(align)),
-        );
-        buf.shape_until_scroll(fs, false);
-
-        let xi = x_left.round() as i32;
-        let mut glyphs = Vec::new();
+    fonts.with_layout(|fcx, lcx| {
+        let layout = shape_rich(fcx, lcx, &rich, theme, default_px, Some(width), Some(align));
+        let mut batch = GlyphBatch { fonts: Vec::new(), glyphs: Vec::new() };
         let mut deco_rects = Vec::new();
         let mut height = 0.0f32;
-        // 首 / 末行的基线与内容盒横向边界(对齐偏移已含在字形坐标里),给边注锚定用。
-        let mut first_line: Option<(f32, f32)> = None; // (line_y, 内容左缘)
-        let mut last_line: Option<(f32, f32)> = None; // (line_y, 内容右缘)
-        for run in buf.layout_runs() {
-            let (mut lo, mut hi) = (f32::MAX, f32::MIN);
-            for g in run.glyphs {
-                let p = g.physical((0.0, 0.0), 1.0);
-                let color = g.color_opt.map(from_cosmic).unwrap_or(theme.text);
-                glyphs.push(PlacedGlyph {
-                    cache_key: p.cache_key,
-                    x: xi + p.x,
-                    y: (y_top + run.line_y).round() as i32 + p.y,
-                    color,
-                    shadow: decos.get(g.metadata).and_then(|d| d.shadow),
-                });
-                lo = lo.min(g.x);
-                hi = hi.max(g.x + g.w);
-            }
-            collect_decos(&run, &decos, x_left, y_top, &mut deco_rects);
-            height = height.max(run.line_top + run.line_height);
-            if !run.glyphs.is_empty() {
-                first_line.get_or_insert((run.line_y, lo));
-                last_line = Some((run.line_y, hi));
-            }
-        }
+        let (first_line, last_line) =
+            extract_layout(&layout, &rich.decos, x_left, y_top, &mut batch, &mut deco_rects, &mut height);
+        collect_each_marks(&layout, &rich.decos, x_left, y_top, &mut deco_rects);
 
         // 边注:各侧单独整形(不限宽不换行),左挂首行、右挂末行,基线对齐锚行,
         // 与正文隔半个基准字号。只画不占位,溢出画布的部分由绘制层裁掉。
@@ -1232,94 +1281,231 @@ fn shape_text(
             }
             let anchor = if k == 0 { first_line } else { last_line };
             let Some((anchor_y, edge)) = anchor else { continue };
-            let (aspans, adecos) =
-                build_spans(aside, theme, base_logical, base_bold, sc, &default_attrs);
-            let mut abuf = Buffer::new(fs, Metrics::new(default_px, default_px * line_mult));
-            abuf.set_size(None, None);
-            abuf.set_rich_text(
-                aspans.iter().map(|(t, a)| (*t, a.clone())),
-                &default_attrs,
-                Shaping::Advanced,
-                None,
-            );
-            abuf.shape_until_scroll(fs, false);
-            let aw = abuf.layout_runs().map(|r| r.line_w).fold(0.0, f32::max);
+            let arich = build_rich(aside, theme, base_logical, base_bold, sc);
+            let alayout = shape_rich(fcx, lcx, &arich, theme, default_px, None, None);
+            let aw = alayout.lines().map(|l| l.metrics().advance).fold(0.0, f32::max);
             let ax_left = if k == 0 { x_left + edge - gap - aw } else { x_left + edge + gap };
-            let axi = ax_left.round() as i32;
             // 首行基线对齐锚行基线;边注自带换行时后续行顺延其下。
-            let Some(first_y) = abuf.layout_runs().next().map(|r| r.line_y) else { continue };
+            let Some(first_y) = alayout.lines().next().map(|l| l.metrics().baseline) else { continue };
             let ay_top = y_top + anchor_y - first_y;
-            for run in abuf.layout_runs() {
-                for g in run.glyphs {
-                    let p = g.physical((0.0, 0.0), 1.0);
-                    let color = g.color_opt.map(from_cosmic).unwrap_or(theme.text);
-                    glyphs.push(PlacedGlyph {
-                        cache_key: p.cache_key,
-                        x: axi + p.x,
-                        y: (ay_top + run.line_y).round() as i32 + p.y,
-                        color,
-                        shadow: adecos.get(g.metadata).and_then(|d| d.shadow),
-                    });
-                }
-                collect_decos(&run, &adecos, ax_left, ay_top, &mut deco_rects);
-            }
+            let mut ah = 0.0;
+            extract_layout(&alayout, &arich.decos, ax_left, ay_top, &mut batch, &mut deco_rects, &mut ah);
+            collect_each_marks(&alayout, &arich.decos, ax_left, ay_top, &mut deco_rects);
         }
-        (glyphs, deco_rects, height)
+        (batch, deco_rects, height)
     })
 }
 
-/// 把行内序列构建成 cosmic-text 富文本跨段 + 各段装饰信息。shape_text 与自然宽测量共用。
+/// 用 parley 把富文本整形成版面:下发默认样式与各区间样式,按 `width` 断行,可选对齐。
+/// 行高随各 span 自己的字号(`FontSizeRelative`),与多字号同段的版式口径一致。
+fn shape_rich(
+    fcx: &mut parley::FontContext,
+    lcx: &mut parley::LayoutContext<Ink>,
+    rich: &RichText,
+    theme: &Theme,
+    default_px: f32,
+    width: Option<f32>,
+    align: Option<Align>,
+) -> parley::Layout<Ink> {
+    let mut b = lcx.ranged_builder(fcx, &rich.text, 1.0, true);
+    b.push_default(StyleProperty::Brush(Ink { color: theme.text, deco: usize::MAX }));
+    b.push_default(FontFamily::named(&theme.font_sans));
+    b.push_default(StyleProperty::FontSize(default_px));
+    b.push_default(LineHeight::FontSizeRelative(theme.line_height));
+    // 中文语境:Han 歧义码位的字形与回退选族按简中取。
+    if let Ok(lang) = "zh-CN".parse() {
+        b.push_default(StyleProperty::Locale(Some(lang)));
+    }
+    for s in &rich.spans {
+        if s.range.is_empty() {
+            continue;
+        }
+        b.push(StyleProperty::Brush(s.ink.clone()), s.range.clone());
+        b.push(FontFamily::named(s.family), s.range.clone());
+        b.push(StyleProperty::FontSize(s.px), s.range.clone());
+        b.push(StyleProperty::FontWeight(FontWeight::new(s.weight as f32)), s.range.clone());
+        if s.italic {
+            b.push(StyleProperty::FontStyle(FontStyle::Italic), s.range.clone());
+        }
+    }
+    let mut layout = b.build(&rich.text);
+    layout.break_all_lines(width);
+    if let Some(a) = align.and_then(align_to_parley) {
+        layout.align(a, AlignmentOptions::default());
+    }
+    layout
+}
+
+/// 把一个排好版的 parley 布局抽成字形批与装饰矩形(范围模式;逐字模式见
+/// [`collect_each_marks`]),并累计块高。返回首行(基线, 内容左缘)与末行
+/// (基线, 内容右缘)给边注锚定用——基线为布局内坐标(未加 `y_top`),
+/// 对齐偏移已含在横向坐标里。
 #[allow(clippy::type_complexity)]
-fn build_spans<'a>(
+fn extract_layout(
+    layout: &parley::Layout<Ink>,
+    decos: &[SpanDeco],
+    x_left: f32,
+    y_top: f32,
+    batch: &mut GlyphBatch,
+    out: &mut Vec<DisplayItem>,
+    height: &mut f32,
+) -> (Option<(f32, f32)>, Option<(f32, f32)>) {
+    let xi = x_left.round() as i32;
+    let mut first_line: Option<(f32, f32)> = None;
+    let mut last_line: Option<(f32, f32)> = None;
+    for line in layout.lines() {
+        let lm = *line.metrics();
+        let mut groups: Vec<DecoGroup> = Vec::new();
+        let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+        let mut any = false;
+        for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(grun) = item else { continue };
+            let run = grun.run();
+            let ink = grun.style().brush.clone();
+            let font = intern_font(&mut batch.fonts, run);
+            let shadow = decos.get(ink.deco).and_then(|d| d.shadow);
+            for g in grun.positioned_glyphs() {
+                batch.glyphs.push(PlacedGlyph {
+                    font,
+                    id: g.id as u16,
+                    x: xi + g.x.round() as i32,
+                    y: (y_top + g.y).round() as i32,
+                    color: ink.color,
+                    shadow,
+                });
+            }
+            let (x0, x1) = (grun.offset(), grun.offset() + grun.advance());
+            lo = lo.min(x0);
+            hi = hi.max(x1);
+            any = true;
+            let rm = run.metrics();
+            match groups.last_mut() {
+                Some(g) if g.deco == ink.deco => {
+                    g.x1 = x1;
+                    g.ascent = g.ascent.max(rm.ascent);
+                    g.descent = g.descent.max(rm.descent);
+                    g.line_h = g.line_h.max(rm.line_height);
+                }
+                _ => groups.push(DecoGroup {
+                    deco: ink.deco,
+                    x0,
+                    x1,
+                    fs: run.font_size(),
+                    ascent: rm.ascent,
+                    descent: rm.descent,
+                    line_h: rm.line_height,
+                }),
+            }
+        }
+        line_decos(&groups, decos, lm.baseline, x_left, y_top, out);
+        *height = height.max(lm.block_max_coord);
+        if any {
+            first_line.get_or_insert((lm.baseline, lo));
+            last_line = Some((lm.baseline, hi));
+        }
+    }
+    (first_line, last_line)
+}
+
+/// 一行内连续同装饰的 GlyphRun 归组:横向范围、字号与该段自己的纵向度量。
+/// 高亮 / 码底按段自身行盒画,不跟整行行盒——同行有更大字号时不被撑高。
+struct DecoGroup {
+    deco: usize,
+    x0: f32,
+    x1: f32,
+    fs: f32,
+    ascent: f32,
+    descent: f32,
+    line_h: f32,
+}
+
+/// 在批内字体表里找到 / 登记一段 GlyphRun 的字体面貌,返回下标。
+fn intern_font(tab: &mut Vec<GlyphFont>, run: &parley::layout::Run<Ink>) -> u32 {
+    let f = run.font();
+    let size = run.font_size();
+    let coords = run.normalized_coords();
+    let syn = run.synthesis();
+    let (skew, embolden) = (syn.skew(), syn.embolden());
+    if let Some(i) = tab.iter().position(|g| {
+        g.font.data.id() == f.data.id()
+            && g.font.index == f.index
+            && g.size == size
+            && g.coords == coords
+            && g.skew == skew
+            && g.embolden == embolden
+    }) {
+        return i as u32;
+    }
+    tab.push(GlyphFont { font: f.clone(), size, coords: coords.to_vec(), skew, embolden });
+    (tab.len() - 1) as u32
+}
+
+/// 行内序列铺成的富文本:整段文字 + 各样式区间 + 装饰表。整形与自然宽测量共用。
+struct RichText<'a> {
+    text: String,
+    spans: Vec<SpanAttrs<'a>>,
+    decos: Vec<SpanDeco>,
+}
+
+/// 一个样式区间(`range` 是 [`RichText::text`] 的字节区间)。
+struct SpanAttrs<'a> {
+    range: std::ops::Range<usize>,
+    family: &'a str,
+    px: f32,
+    weight: u16,
+    italic: bool,
+    ink: Ink,
+}
+
+/// 把行内序列铺成富文本。硬换行直接落 `\n` 进文字(parley 视作强制断行)。
+fn build_rich<'a>(
     inlines: &'a [Inline],
     theme: &'a Theme,
     base_logical: f32,
     base_bold: bool,
     sc: f32,
-    default_attrs: &Attrs<'a>,
-) -> (Vec<(&'a str, Attrs<'a>)>, Vec<SpanDeco>) {
-    let line_mult = theme.line_height;
-    let mut spans: Vec<(&str, Attrs)> = Vec::new();
+) -> RichText<'a> {
+    let mut text = String::new();
+    let mut spans: Vec<SpanAttrs> = Vec::new();
     let mut decos: Vec<SpanDeco> = Vec::new();
     for inline in inlines {
         match inline {
-            Inline::Text { text, style } => {
+            Inline::Text { text: t, style } => {
                 let idx = decos.len();
                 let px = safe_px(base_logical * style.size * sc);
                 // 链接无显式色时用主题强调色。
                 let fallback = if style.link { theme.accent } else { theme.text };
                 let ink = style.color.unwrap_or(fallback);
-                let mut a = base_attrs()
-                    .family(family_of(&style.font, theme))
-                    .color(to_cosmic(ink))
-                    .metrics(Metrics::new(px, px * line_mult))
-                    .metadata(idx);
                 let mut weight = match style.weight {
-                    Some(w) => Weight(w),
-                    None if base_bold => Weight::BOLD,
-                    None => Weight::NORMAL,
+                    Some(w) => w,
+                    None if base_bold => 700,
+                    None => 400,
                 };
-                // 默认楷体字族(霞鹜文楷)只有 300/400/500 三档,而 cosmic-text 对族内
-                // 没有的字重会跨族借字(比如 700 借到黑体 Bold),楷体语境就丢了楷体——
-                // 故夹到族内范围:细 → 300,粗 → 500(族内最重,当楷体的「粗」)。
+                // 默认楷体字族(霞鹜文楷)只有 300/400/500 三档,族内没有的字重会跨族
+                // 借字(比如 700 借到黑体 Bold),楷体语境就丢了楷体——故夹到族内范围:
+                // 细 → 300,粗 → 500(族内最重,当楷体的「粗」)。
                 if matches!(style.font, FontRole::Kai) {
-                    weight = Weight(weight.0.clamp(300, 500));
+                    weight = weight.clamp(300, 500);
                 }
-                a = a.weight(weight);
-                if style.italic {
-                    a = a.style(Style::Italic);
-                }
+                let family = family_of(&style.font, theme);
+                let start = text.len();
                 // emoji 表现序列切到彩色 emoji 字族——黑体自带一批 emoji 的单色字面,
                 // 请求字族先命中会抢跑,同一行 emoji 一半黑白一半彩色;切段后统一彩色,
-                // 字体缺失时按 cosmic-text 回退,不丢字。装饰共用同一条(metadata 同 idx)。
-                for (seg, emoji) in emoji_runs(text) {
-                    if emoji {
-                        spans.push((seg, a.clone().family(Family::Name(&theme.font_emoji))));
-                    } else {
-                        spans.push((seg, a.clone()));
-                    }
+                // 字体缺失时按 fontique 回退,不丢字。装饰共用同一条(deco 同 idx)。
+                for (seg, emoji) in emoji_runs(t) {
+                    let s = text.len();
+                    text.push_str(seg);
+                    spans.push(SpanAttrs {
+                        range: s..text.len(),
+                        family: if emoji { &theme.font_emoji } else { family },
+                        px,
+                        weight,
+                        italic: style.italic,
+                        ink: Ink { color: ink, deco: idx },
+                    });
                 }
                 decos.push(SpanDeco {
+                    range: start..text.len(),
                     underline: style.underline,
                     strike: style.strike,
                     highlight: resolve_highlight(style.highlight, theme),
@@ -1348,16 +1534,18 @@ fn build_spans<'a>(
             Inline::Code(s) => {
                 let idx = decos.len();
                 let px = safe_px(base_logical * sc);
-                let mut a = base_attrs()
-                    .family(Family::Name(&theme.font_mono))
-                    .color(to_cosmic(theme.code_text))
-                    .metrics(Metrics::new(px, px * line_mult))
-                    .metadata(idx);
-                if base_bold {
-                    a = a.weight(Weight::BOLD);
-                }
-                spans.push((s, a));
+                let start = text.len();
+                text.push_str(s);
+                spans.push(SpanAttrs {
+                    range: start..text.len(),
+                    family: &theme.font_mono,
+                    px,
+                    weight: if base_bold { 700 } else { 400 },
+                    italic: false,
+                    ink: Ink { color: theme.code_text, deco: idx },
+                });
                 decos.push(SpanDeco {
+                    range: start..text.len(),
                     underline: false,
                     strike: false,
                     highlight: None,
@@ -1368,10 +1556,10 @@ fn build_spans<'a>(
                     shadow: None,
                 });
             }
-            Inline::LineBreak => spans.push(("\n", default_attrs.clone())),
+            Inline::LineBreak => text.push('\n'),
         }
     }
-    (spans, decos)
+    RichText { text, spans, decos }
 }
 
 /// 测一段行内内容的「自然宽」(不换行时的最长行宽,物理像素),给表格列宽求解用。
@@ -1384,23 +1572,10 @@ fn measure_natural(
     sc: f32,
 ) -> f32 {
     let px = safe_px(base_logical * sc);
-    let line_mult = theme.line_height;
-    let default_attrs = base_attrs()
-        .family(Family::Name(&theme.font_sans))
-        .metrics(Metrics::new(px, px * line_mult))
-        .metadata(usize::MAX);
-    let (spans, _) = build_spans(inlines, theme, base_logical, base_bold, sc, &default_attrs);
-    fonts.with_system(|fs| {
-        let mut buf = Buffer::new(fs, Metrics::new(px, px * line_mult));
-        buf.set_size(None, None); // 不限宽 → 不换行
-        buf.set_rich_text(
-            spans.iter().map(|(t, a)| (*t, a.clone())),
-            &default_attrs,
-            Shaping::Advanced,
-            None,
-        );
-        buf.shape_until_scroll(fs, false);
-        buf.layout_runs().map(|r| r.line_w).fold(0.0, f32::max)
+    let rich = build_rich(inlines, theme, base_logical, base_bold, sc);
+    fonts.with_layout(|fcx, lcx| {
+        let layout = shape_rich(fcx, lcx, &rich, theme, px, None, None); // 不限宽 → 不换行
+        layout.lines().map(|l| l.metrics().advance).fold(0.0, f32::max)
     })
 }
 
@@ -1428,6 +1603,14 @@ fn anchor_pos(
     (x.max(ix), y.max(iy))
 }
 
+/// 两色线性插值(`t` ∈ [0,1],0 = 全 `a`):从主题既有色派生衍生色用
+/// (如代码块题头栏 = 盒底向墨色压一档),不另开主题字段。
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    let ch = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color::rgba(ch(a.r, b.r), ch(a.g, b.g), ch(a.b, b.b), ch(a.a, b.a))
+}
+
 /// 把主题高亮策略解析成具体色。
 fn resolve_highlight(h: Option<crate::model::Highlight>, theme: &Theme) -> Option<Color> {
     use crate::model::Highlight;
@@ -1438,45 +1621,35 @@ fn resolve_highlight(h: Option<crate::model::Highlight>, theme: &Theme) -> Optio
     }
 }
 
-/// 在一行内,把连续同 metadata 的字形归组,据其装饰信息产出装饰矩形。
-fn collect_decos(
-    run: &cosmic_text::LayoutRun,
+/// 据一行内的装饰分组产出装饰矩形与范围模式的圈注 / 着重点
+/// (逐字模式见 [`collect_each_marks`])。
+fn line_decos(
+    groups: &[DecoGroup],
     decos: &[SpanDeco],
+    line_baseline: f32,
     x_left: f32,
     y_top: f32,
     out: &mut Vec<DisplayItem>,
 ) {
-    let glyphs = run.glyphs;
-    let baseline = y_top + run.line_y;
-    let line_top = y_top + run.line_top;
-    let line_h = run.line_height;
-    let mut i = 0;
-    while i < glyphs.len() {
-        let m = glyphs[i].metadata;
-        let (mut x0, mut x1, mut fs) = (f32::MAX, f32::MIN, glyphs[i].font_size);
-        let seg_start = i;
-        let mut j = i;
-        while j < glyphs.len() && glyphs[j].metadata == m {
-            let g = &glyphs[j];
-            x0 = x0.min(g.x);
-            x1 = x1.max(g.x + g.w);
-            fs = g.font_size;
-            j += 1;
-        }
-        i = j;
-        let seg = &glyphs[seg_start..j];
+    let baseline = y_top + line_baseline;
+    for g in groups {
+        let &DecoGroup { deco: m, x0, x1, fs, .. } = g;
         let Some(d) = decos.get(m) else { continue };
         let ax = x_left + x0;
         let aw = (x1 - x0).max(0.0);
         if aw <= 0.0 {
             continue;
         }
+        // 段自身行盒:绕基线按字面 ascent/descent 摆,行距上下各半——整行同字号时与
+        // 行盒重合;同行有更大字号时底色只包自己,不被撑高。
+        let half_lead = (g.line_h - g.ascent - g.descent) / 2.0;
+        let span_top = baseline - g.ascent - half_lead;
         if let Some(c) = d.highlight {
             out.push(DisplayItem::Rect {
                 x: ax - fs * 0.06,
-                y: line_top,
+                y: span_top,
                 w: aw + fs * 0.12,
-                h: line_h,
+                h: g.line_h,
                 color: c,
                 radius: fs * 0.12,
                 layer: RectLayer::Under,
@@ -1485,9 +1658,9 @@ fn collect_decos(
         if let Some(c) = d.code_bg {
             out.push(DisplayItem::Rect {
                 x: ax - fs * 0.18,
-                y: line_top + line_h * 0.08,
+                y: span_top + g.line_h * 0.08,
                 w: aw + fs * 0.36,
-                h: line_h * 0.84,
+                h: g.line_h * 0.84,
                 color: c,
                 radius: fs * 0.22,
                 layer: RectLayer::Under,
@@ -1515,64 +1688,90 @@ fn collect_decos(
                 layer: RectLayer::Over,
             });
         }
-        // 标注盒序列:范围模式 = 整段一盒;逐字模式 = 每个字形簇一盒(空白簇跳过)。
-        let mark_boxes = |each: bool| -> Vec<(f32, f32)> {
-            if each {
-                seg.iter()
-                    .filter(|g| {
-                        run.text.get(g.start..g.end).is_none_or(|t| !t.trim().is_empty())
-                    })
-                    .map(|g| (x_left + g.x, g.w))
-                    .collect()
-            } else {
-                vec![(ax, aw)]
-            }
-        };
         if let Some(r) = &d.ring {
-            // 椭圆描边以盒中心为心:定径分量直接用(与文字宽窄无关,多字单字同大),
-            // 缺的分量按盒自适应(横向包住盒、纵向盖住字高);只给 rx 即正圆。
-            // 画在字形之前,溢出到行距里、不动布局。
-            for (bx, bw) in mark_boxes(r.each) {
-                let cx = bx + bw / 2.0;
-                let cy = baseline - fs * 0.35;
-                let auto_rx = (bw / 2.0 + fs * 0.30).max(fs * 0.55);
-                let (rx, ry) = match (r.rx, r.ry) {
-                    (Some(rx), Some(ry)) => (rx, ry),
-                    (Some(rx), None) => (rx, rx),
-                    (None, Some(ry)) => (auto_rx, ry),
-                    // 全自适应:逐字圈正圆(半径取横/纵需求大者——圈单字理应是圆,
-                    // 不随汉字全角/数字半角的字宽变形),范围圈按整段做扁椭圆。
-                    (None, None) if r.each => {
-                        let rr = auto_rx.max(fs * 0.62);
-                        (rr, rr)
-                    }
-                    (None, None) => (auto_rx, fs * 0.62),
-                };
-                out.push(DisplayItem::Ellipse {
-                    cx,
-                    cy,
-                    rx,
-                    ry,
-                    width: r.width.unwrap_or((fs * 0.07).max(1.0)),
-                    color: r.color,
-                });
+            if !r.each {
+                out.push(ring_item(ax, aw, fs, baseline, r, false));
             }
         }
         if let Some(p) = &d.dot {
-            // 着重点:盒中线正下方一枚实心圆(全圆角矩形即圆),落在行距里。
-            let r = p.radius.unwrap_or((fs * 0.09).max(1.5));
-            for (bx, bw) in mark_boxes(p.each) {
-                out.push(DisplayItem::Rect {
-                    x: bx + bw / 2.0 - r,
-                    y: baseline + fs * 0.16,
-                    w: r * 2.0,
-                    h: r * 2.0,
-                    color: p.color,
-                    radius: r,
-                    layer: RectLayer::Over,
-                });
+            if !p.each {
+                out.push(dot_item(ax, aw, fs, baseline, p));
             }
         }
+    }
+}
+
+/// 逐字模式的圈注 / 着重点:按装饰的字节区间在布局里游走字形簇,空白簇跳过,
+/// 每簇一盒(簇即用户感知的「一个字」,合字 / 修饰序列天然一体)。
+fn collect_each_marks(
+    layout: &parley::Layout<Ink>,
+    decos: &[SpanDeco],
+    x_left: f32,
+    y_top: f32,
+    out: &mut Vec<DisplayItem>,
+) {
+    for d in decos {
+        let ring = d.ring.as_ref().filter(|r| r.each);
+        let dot = d.dot.as_ref().filter(|p| p.each);
+        if (ring.is_none() && dot.is_none()) || d.range.is_empty() {
+            continue;
+        }
+        let mut cl = Cluster::from_byte_index(layout, d.range.start);
+        while let Some(c) = cl {
+            if c.text_range().start >= d.range.end {
+                break;
+            }
+            if !c.is_space_or_nbsp() {
+                if let Some(vx) = c.visual_offset() {
+                    let baseline = y_top + c.line().metrics().baseline;
+                    let fs = c.run().font_size();
+                    let (bx, bw) = (x_left + vx, c.advance());
+                    if let Some(r) = ring {
+                        out.push(ring_item(bx, bw, fs, baseline, r, true));
+                    }
+                    if let Some(p) = dot {
+                        out.push(dot_item(bx, bw, fs, baseline, p));
+                    }
+                }
+            }
+            cl = c.next_logical();
+        }
+    }
+}
+
+/// 一枚圈注:椭圆描边以盒 `(bx, bw)` 中心为心,定径分量直接用(与文字宽窄无关,
+/// 多字单字同大),缺的分量按盒自适应(横向包住盒、纵向盖住字高);只给 rx 即正圆。
+/// 画在字形之前,溢出到行距里、不动布局。
+fn ring_item(bx: f32, bw: f32, fs: f32, baseline: f32, r: &RingDeco, each: bool) -> DisplayItem {
+    let cx = bx + bw / 2.0;
+    let cy = baseline - fs * 0.35;
+    let auto_rx = (bw / 2.0 + fs * 0.30).max(fs * 0.55);
+    let (rx, ry) = match (r.rx, r.ry) {
+        (Some(rx), Some(ry)) => (rx, ry),
+        (Some(rx), None) => (rx, rx),
+        (None, Some(ry)) => (auto_rx, ry),
+        // 全自适应:逐字圈正圆(半径取横/纵需求大者——圈单字理应是圆,
+        // 不随汉字全角/数字半角的字宽变形),范围圈按整段做扁椭圆。
+        (None, None) if each => {
+            let rr = auto_rx.max(fs * 0.62);
+            (rr, rr)
+        }
+        (None, None) => (auto_rx, fs * 0.62),
+    };
+    DisplayItem::Ellipse { cx, cy, rx, ry, width: r.width.unwrap_or((fs * 0.07).max(1.0)), color: r.color }
+}
+
+/// 一枚着重点:盒中线正下方一枚实心圆(全圆角矩形即圆),落在行距里。
+fn dot_item(bx: f32, bw: f32, fs: f32, baseline: f32, p: &DotDeco) -> DisplayItem {
+    let r = p.radius.unwrap_or((fs * 0.09).max(1.5));
+    DisplayItem::Rect {
+        x: bx + bw / 2.0 - r,
+        y: baseline + fs * 0.16,
+        w: r * 2.0,
+        h: r * 2.0,
+        color: p.color,
+        radius: r,
+        layer: RectLayer::Over,
     }
 }
 
@@ -1620,39 +1819,25 @@ fn emoji_runs(text: &str) -> Vec<(&str, bool)> {
     runs
 }
 
-/// 所有文字 Attrs 的起点:统一关闭 hinting。本引擎默认 2× 超采样,hinting 对画质无益;
-/// 更要紧的是 swash 0.2 的 hint 实例缓存不按字号失效——共享 FontHandle 连续渲多张、
-/// 或同文档多字号时,字形会按「上一次的字号」栅格化(表头叠字、巨字、字距开洞),
-/// 关 hinting 直接绕开这条缓存。别改回 `Attrs::new()` 裸用。
-fn base_attrs() -> Attrs<'static> {
-    Attrs::new().cache_key_flags(cosmic_text::CacheKeyFlags::DISABLE_HINTING)
-}
-
-fn family_of<'a>(role: &'a FontRole, theme: &'a Theme) -> Family<'a> {
+/// 字体角色 → 主题字族名。
+fn family_of<'a>(role: &'a FontRole, theme: &'a Theme) -> &'a str {
     match role {
-        FontRole::Sans => Family::Name(&theme.font_sans),
-        FontRole::Serif => Family::Name(&theme.font_serif),
-        FontRole::Mono => Family::Name(&theme.font_mono),
-        FontRole::Kai => Family::Name(&theme.font_kai),
-        FontRole::Named(s) => Family::Name(s),
+        FontRole::Sans => &theme.font_sans,
+        FontRole::Serif => &theme.font_serif,
+        FontRole::Mono => &theme.font_mono,
+        FontRole::Kai => &theme.font_kai,
+        FontRole::Named(s) => s,
     }
 }
 
-fn align_to_cosmic(a: Align) -> cosmic_text::Align {
+/// 引擎对齐 → parley 对齐;左对齐即 parley 默认,无须施加(返回 `None`)。
+fn align_to_parley(a: Align) -> Option<Alignment> {
     match a {
-        Align::Left => cosmic_text::Align::Left,
-        Align::Center => cosmic_text::Align::Center,
-        Align::Right => cosmic_text::Align::Right,
-        Align::Justify => cosmic_text::Align::Justified,
+        Align::Left => None,
+        Align::Center => Some(Alignment::Center),
+        Align::Right => Some(Alignment::Right),
+        Align::Justify => Some(Alignment::Justify),
     }
-}
-
-fn to_cosmic(c: Color) -> cosmic_text::Color {
-    cosmic_text::Color::rgba(c.r, c.g, c.b, c.a)
-}
-
-fn from_cosmic(c: cosmic_text::Color) -> Color {
-    Color::rgba(c.r(), c.g(), c.b(), c.a())
 }
 
 /// 水平规线(以 `y` 为中线)。

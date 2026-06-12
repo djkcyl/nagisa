@@ -2,18 +2,18 @@
 //! (PNG / WebP)。
 //!
 //! 矩形(背景 / 高亮 / 分割线 / 引用条 / 代码底 / 表格网格)走 tiny-skia 的抗锯齿填充;字形由
-//! cosmic-text 的 `SwashCache` 栅格成覆盖率 / 彩色位图,按笔位 premultiplied-alpha 合成进画布;
-//! 内嵌图同样合成(可圆角裁切)。顺序:背景 → 垫底影(面板投影,衬在自家底色下)→
+//! swash 栅格成覆盖率 / 彩色位图(经 [`crate::font`] 的字形缓存),按笔位 premultiplied-alpha
+//! 合成进画布;内嵌图同样合成(可圆角裁切)。顺序:背景 → 垫底影(面板投影,衬在自家底色下)→
 //! 衬底矩形 → 普通投影(图片)→ 图 → 角标底板/边框 → 字形(影先字后)→
 //! 覆盖矩形(下划 / 删除)。
 
-use cosmic_text::{SwashContent, SwashImage};
 use image::codecs::png::{CompressionType, FilterType};
 use image::{ExtendedColorType, ImageEncoder};
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, PremultipliedColorU8, Rect, Transform};
 
 use crate::error::{Error, Result};
-use crate::layout::{DisplayItem, Layout, PlacedGlyph, RectLayer, ShadowItem, StrokeItem};
+use crate::font::GlyphImage;
+use crate::layout::{DisplayItem, GlyphBatch, Layout, RectLayer, ShadowItem, StrokeItem};
 use crate::model::Color;
 use crate::theme::{OutputFormat, RenderOptions};
 
@@ -135,13 +135,19 @@ fn render_pixmap(layout: &Layout, opts: &RenderOptions) -> Result<Pixmap> {
             DisplayItem::Ellipse { cx, cy, rx, ry, width, color } => {
                 draw_ellipse(&mut pix, *cx, *cy, *rx, *ry, *width, *color);
             }
+            DisplayItem::QuoteMark { x, y, size, color } => {
+                draw_quote(&mut pix, *x, *y, *size, *color);
+            }
+            DisplayItem::CodeMark { x, y, size, color } => {
+                draw_code_mark(&mut pix, *x, *y, *size, *color);
+            }
             _ => {}
         }
     }
     // 5) 字形(带阴影的先画影、再画字)。
     for item in &layout.items {
-        if let DisplayItem::Glyphs(glyphs) = item {
-            draw_glyphs(&mut pix, opts, glyphs);
+        if let DisplayItem::Glyphs(batch) = item {
+            draw_glyphs(&mut pix, opts, batch);
         }
     }
     // 6) 覆盖矩形(下划 / 删除,Over)——在字形之上。
@@ -309,6 +315,67 @@ fn draw_ellipse(pix: &mut Pixmap, cx: f32, cy: f32, rx: f32, ry: f32, width: f32
     pix.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 }
 
+/// 画代码符号图标 `</>`:两枚尖括号 + 中间一道斜杠,圆头描边,矢量自绘。
+/// `(x, y)` 为图标盒左上角,`size` 为盒高;整体宽约 `size * 1.55`。
+fn draw_code_mark(pix: &mut Pixmap, x: f32, y: f32, size: f32, color: Color) {
+    if size <= 0.0 {
+        return;
+    }
+    let s = size;
+    let w = s * 1.55;
+    let mut pb = PathBuilder::new();
+    // 左尖括号 <
+    pb.move_to(x + s * 0.40, y + s * 0.16);
+    pb.line_to(x + s * 0.08, y + s * 0.50);
+    pb.line_to(x + s * 0.40, y + s * 0.84);
+    // 右尖括号 >
+    pb.move_to(x + w - s * 0.40, y + s * 0.16);
+    pb.line_to(x + w - s * 0.08, y + s * 0.50);
+    pb.line_to(x + w - s * 0.40, y + s * 0.84);
+    // 斜杠 /
+    pb.move_to(x + w / 2.0 + s * 0.13, y + s * 0.08);
+    pb.line_to(x + w / 2.0 - s * 0.13, y + s * 0.92);
+    let Some(path) = pb.finish() else { return };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+    paint.anti_alias = true;
+    let stroke = tiny_skia::Stroke {
+        width: (s * 0.14).max(1.0),
+        line_cap: tiny_skia::LineCap::Round,
+        line_join: tiny_skia::LineJoin::Round,
+        ..tiny_skia::Stroke::default()
+    };
+    pix.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+}
+
+/// 画引号图标:两枚「6」形反引号(圆头贴底 + 上扬尾),矢量自绘不依赖字体字形。
+/// `(x, y)` 为图标盒左上角,`size` 为盒高;整体宽约 `size * 1.3`。
+fn draw_quote(pix: &mut Pixmap, x: f32, y: f32, size: f32, color: Color) {
+    if size <= 0.0 {
+        return;
+    }
+    let r = size * 0.30; // 球半径
+    let mut pb = PathBuilder::new();
+    for k in 0..2 {
+        let bx = x + r + k as f32 * (size * 0.72); // 球心 x
+        let by = y + size - r; // 球心 y(贴底)
+        if let Some(ball) = Rect::from_xywh(bx - r, by - r, r * 2.0, r * 2.0) {
+            pb.push_oval(ball);
+        }
+        // 尾:外缘从球左切点扬到右上尖端,内缘贴着外缘收回球顶,与球叠成细钩的「6」。
+        let tip = (bx + r * 1.15, y);
+        pb.move_to(bx - r, by);
+        pb.cubic_to(bx - r, by - r * 1.7, bx - r * 0.1, y + r * 0.5, tip.0, tip.1);
+        pb.cubic_to(bx + r * 0.25, y + r * 0.6, bx + r * 0.35, by - r * 1.6, bx + r * 0.5, by - r * 0.85);
+        pb.close();
+    }
+    let Some(path) = pb.finish() else { return };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+    paint.anti_alias = true;
+    pix.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+}
+
 /// 画一个(可圆角)实心矩形。
 fn draw_rect(pix: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, color: Color, radius: f32) {
     if w <= 0.0 || h <= 0.0 {
@@ -347,14 +414,15 @@ fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<tiny_skia::Pat
 }
 
 /// 把一批字形合成进画布:先画整批的阴影(免得后字的影压在前字上),再画字形本体。
-fn draw_glyphs(pix: &mut Pixmap, opts: &RenderOptions, glyphs: &[PlacedGlyph]) {
+fn draw_glyphs(pix: &mut Pixmap, opts: &RenderOptions, batch: &GlyphBatch) {
     let pw = pix.width() as i32;
     let ph = pix.height() as i32;
     let pixels = pix.pixels_mut();
-    opts.fonts.with_cache(|cache, fs| {
-        for g in glyphs {
+    opts.fonts.with_raster(|raster| {
+        for g in &batch.glyphs {
             let Some(sh) = g.shadow else { continue };
-            let Some(img) = cache.get_image(fs, g.cache_key) else { continue };
+            let Some(gf) = batch.fonts.get(g.font as usize) else { continue };
+            let Some(img) = raster.image(gf, g.id) else { continue };
             let (sx, sy) = (g.x.saturating_add(sh.dx), g.y.saturating_add(sh.dy));
             if sh.blur <= 0.5 {
                 blit_glyph(pixels, pw, ph, img, sx, sy, sh.color);
@@ -379,8 +447,9 @@ fn draw_glyphs(pix: &mut Pixmap, opts: &RenderOptions, glyphs: &[PlacedGlyph]) {
                 }
             }
         }
-        for g in glyphs {
-            if let Some(img) = cache.get_image(fs, g.cache_key) {
+        for g in &batch.glyphs {
+            let Some(gf) = batch.fonts.get(g.font as usize) else { continue };
+            if let Some(img) = raster.image(gf, g.id) {
                 blit_glyph(pixels, pw, ph, img, g.x, g.y, g.color);
             }
         }
@@ -392,16 +461,16 @@ fn blit_glyph(
     pixels: &mut [PremultipliedColorU8],
     pw: i32,
     ph: i32,
-    img: &SwashImage,
+    img: &GlyphImage,
     pen_x: i32,
     base_y: i32,
     color: Color,
 ) {
     // 笔位加偏移用饱和加,防极端坐标下的 i32 溢出 panic。
-    let ox = pen_x.saturating_add(img.placement.left);
-    let oy = base_y.saturating_sub(img.placement.top);
-    let gw = img.placement.width as i32;
-    let gh = img.placement.height as i32;
+    let ox = pen_x.saturating_add(img.left);
+    let oy = base_y.saturating_sub(img.top);
+    let gw = img.width as i32;
+    let gh = img.height as i32;
     for j in 0..gh {
         let py = oy.saturating_add(j);
         if py < 0 || py >= ph {
@@ -414,25 +483,15 @@ fn blit_glyph(
             }
             // py/px 已 ≥ 0,用 usize 算下标,避免 py*pw 在 i32 下溢出。
             let dst = &mut pixels[py as usize * pw as usize + px as usize];
-            match img.content {
-                SwashContent::Mask => {
-                    let cov = img.data[(j * gw + i) as usize];
-                    blend(dst, color.r, color.g, color.b, color.a, cov);
-                }
-                SwashContent::SubpixelMask => {
-                    let k = ((j * gw + i) * 3) as usize;
-                    let cov = ((img.data[k] as u16 + img.data[k + 1] as u16 + img.data[k + 2] as u16)
-                        / 3) as u8;
-                    blend(dst, color.r, color.g, color.b, color.a, cov);
-                }
-                SwashContent::Color => {
-                    // 彩色字形(emoji):像素自带色,但传入色的 alpha 仍要乘进去——
-                    // 软影的淡色副本、半透明水印里的 emoji 不该实心。
-                    let k = ((j * gw + i) * 4) as usize;
-                    let (r, g, b, a) =
-                        (img.data[k], img.data[k + 1], img.data[k + 2], img.data[k + 3]);
-                    blend(dst, r, g, b, color.a, a);
-                }
+            if img.color {
+                // 彩色字形(emoji):像素自带色,但传入色的 alpha 仍要乘进去——
+                // 软影的淡色副本、半透明水印里的 emoji 不该实心。
+                let k = ((j * gw + i) * 4) as usize;
+                let (r, g, b, a) = (img.data[k], img.data[k + 1], img.data[k + 2], img.data[k + 3]);
+                blend(dst, r, g, b, color.a, a);
+            } else {
+                let cov = img.data[(j * gw + i) as usize];
+                blend(dst, color.r, color.g, color.b, color.a, cov);
             }
         }
     }

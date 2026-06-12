@@ -26,10 +26,10 @@ use std::path::PathBuf;
 
 use tracing::Level;
 use tracing_appender::non_blocking::WorkerGuard;
+use tracing_log::AsLog;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
 use crate::bus::{LogBus, LogBusLayer};
@@ -97,8 +97,7 @@ fn build_filter(cfg: &LogConfig) -> EnvFilter {
 /// 无父目录时落到当前目录 `.`；无文件名时用 `nagisa.log` 兜底。
 fn split_file_path(path: &std::path::Path) -> (PathBuf, PathBuf) {
     let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).map_or_else(|| PathBuf::from("."), PathBuf::from);
-    let prefix =
-        path.file_name().map_or_else(|| PathBuf::from("nagisa.log"), PathBuf::from);
+    let prefix = path.file_name().map_or_else(|| PathBuf::from("nagisa.log"), PathBuf::from);
     (dir, prefix)
 }
 
@@ -158,11 +157,18 @@ pub fn init(cfg: LogConfig) -> (LogGuard, Option<LogBus>) {
         (None, None)
     };
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(console)
-        .with(file_layer)
-        .with(bus_layer)
+    let subscriber = tracing_subscriber::registry().with(filter).with(console).with(file_layer).with(bus_layer);
+    // 不走 SubscriberInitExt::init——它(经 tracing-subscriber 的 "tracing-log" feature,消费者
+    // 依赖图一统一就开)自装的 log→tracing 桥不可配,而桥过来的事件 target 恒为 "log"(真来源
+    // 只在 log.target 字段),EnvFilter 指令打不中。这里手动设订阅者 + 自装桥,在桥上按 crate
+    // 掐掉 icu_provider(render 断行底层)缺 ja/cjdict 分词模型的良性 WARN——逢渲染就刷,
+    // 过滤器层面无解,只能掐在桥上。
+    tracing::subscriber::set_global_default(subscriber).expect("全局默认订阅者只能设一次(init 不可重复调用)");
+    // 桥在订阅者之后装,才拿得到全局 max level 提示加速 log 侧跳过;装失败(进程里已有
+    // 别的 log 记录器)不算错——桥缺位只丢 log 生态的记录,tracing 原生日志不受影响。
+    let _ = tracing_log::LogTracer::builder()
+        .ignore_crate("icu_provider")
+        .with_max_level(tracing::level_filters::LevelFilter::current().as_log())
         .init();
 
     (LogGuard { _file: file_guard }, bus)

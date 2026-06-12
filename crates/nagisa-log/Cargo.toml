@@ -17,4 +17,6 @@ reqwest = { workspace = true, features = ["json", "rustls"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
+# log→tracing 桥显式自装(SubscriberInitExt::init 自装的桥不可配,掐不掉 icu_provider 噪声)。
+tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "registry", "ansi", "json"] }

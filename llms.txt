@@ -192,6 +192,7 @@ async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
 6. `#[arg(at)]` 期望文本「@123456」也命中 → 它只认真正的 @ 消息段,纯文本时命令整个不触发。RIGHT:`#[arg(at_or_id)] target: Uin`。
 7. 用 `#[event(Message)]` 做全量记录/计数,但游戏(waiter)进行中收不到消息 → 被 block 吞了。RIGHT:加 `top`:`#[event(Message, top)]`。
 8. handler 里跨 `.await` 持有 `rand::rng()`(ThreadRng)→ future 非 `Send`,报错指向 spawn 点而非病根,极难排查。RIGHT:任何 `.await` 之前把随机数取样成纯值,让 rng 先 drop。
+9. 想用 `RUST_LOG=some_log_crate=off` 压掉某个走 `log` 生态的依赖的噪声 → 指令打不中:log→tracing 桥过来的事件 target 恒为 `"log"`,真来源只在 `log.target` 字段,EnvFilter 按 target 过滤对它们一律失效(tracing 原生来源如 `sqlx`/`nagisa::*` 不受影响,照常可过滤)。RIGHT:这类噪声只能掐在桥上——`nagisa::log::init` 已对 icu_provider(render 断行底层的良性缺模型 WARN)这么做;再有别家,去 `nagisa-log/src/init.rs` 的 `LogTracer::builder()` 加 `ignore_crate`。
 
 ---
 

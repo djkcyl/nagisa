@@ -102,13 +102,13 @@ async fn welcome(j: MemberJoin, bot: Bot) -> HandlerResult {
 
 - 能力:`#[command]`(字面命令/正则/具名槽三种匹配器;@我限定、优先级、usage、门控、冷却、开关元数据)、`#[event]`(37 种 `EventKind`:消息/25 通知/4 请求/6 生命周期/Raw)、`plugin!{}`(插件登记,同模块触发器自动归属)、`#[derive(Args/ArgEnum/Slots)]`、`matcher!{}` 内联糖。
 - 查:`crates/nagisa-macros/src/lib.rs`(7 个宏入口的属性键契约全在此文件 rustdoc)→ 实现 `attrs.rs` / `args_derive.rs` / `slots.rs` / `plugin.rs`;`EventKind` 全清单在 `crates/nagisa-core/src/event_trigger.rs`。
-- 非显然:匹配器三选一必给其一(多给/全缺编译错);`#[event]` 拒绝 `usage` / `mention_me` / `slots`;多词命令的字面空格放宽为 `\s+`;`id`/`name` 缺省取 fn 名,`can_disable`/`default_enable` 缺省 true。
+- 非显然:匹配器三选一必给其一(多给/全缺编译错);`#[event]` 拒绝 `usage` / `mention_me` / `slots`;多词命令的字面空格放宽为 `\s+`;`id`/`name` 缺省取 fn 名,`can_disable`/`default_enable` 缺省 true;**无参命令默认收紧**(无 `Args<T>` 形参或规格为空 ⇒ 自动 `Matcher::no_args`:只认「命令词」与「回复/@bot/空白 + 命令词」,有任何其余内容——剩余文本或 表情/图片/@别人 等段——整体不算命中、静默放行,防「我的 xxx」日常说话误触发);`exact` 旗标显式严格(整条消息只能是命令词本身,连呼叫姿势都不算;与 `args: Args<T>` 形参同用编译错);带参命令与正则/槽位不自动收紧。
 
 ### 参数解析
 
 - 能力:文本位置参 / `Option` 可选 / `default=` 缺省 / `--长短选项` / 旗标 / 六种消息元素参(图、语音、视频、@、引用、表情)/ `at_or_id`(@ 或裸 QQ 号)/ `rest(,raw)` 收尾;`ArgEnum` 受限选项;`Slots` 整句具名槽。
 - 查:`crates/nagisa-core/src/args.rs`(`FromArg` 已实现类型清单、token 流、元素投影助手)、`crates/nagisa-macros/src/args_derive.rs`(各 `#[arg]` 形态)、`crates/nagisa-core/src/slots.rs`。
-- 非显然:`#[arg(at)]` 只认真正的 @ 段,文本「@123」要 `at_or_id`;旗标只认前导位置;`ArgText`(命令后整段文本自己切)是不想定义结构体时的轻量主力。
+- 非显然:`#[arg(at)]` 只认真正的 @ 段,文本「@123」要 `at_or_id`;前导 @bot 是呼叫姿势,匹配前就被剥掉、不进参数区(`at`/`at_or_id` 不会把它误当目标);旗标只认前导位置;`ArgText`(命令后整段文本自己切)是不想定义结构体时的轻量主力。
 
 ### 提取器(handler 形参)
 

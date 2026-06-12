@@ -89,11 +89,13 @@ async fn transfer(reply: Reply, args: Args<Transfer>) -> HandlerResult {
 | 类 | 键 |
 |---|---|
 | 匹配器（三选一，必给） | **前导位置参数** `"a", "b"` 字面量命令词（写在最前）；`regex = "^..$"` 原始正则；`slots = Type` 用 `#[derive(Slots)]` 类型作头 |
-| 行为 | `mention_me` 要求 @bot；`top` 置顶观察者（恒跑，不被 waiter 拦截）；`priority = N` 越大越先；`usage = ".."` 参数解析失败时回贴的用法串（不配则静默跳过） |
+| 行为 | `mention_me` 要求 @bot；`exact` 严格模式（整条消息只能是命令词本身，见下）；`top` 置顶观察者（恒跑，不被 waiter 拦截）；`priority = N` 越大越先；`usage = ".."` 参数解析失败时回贴的用法串（不配则静默跳过） |
 | 门控 | `gate = <Rule 表达式>`；`cooldown = <秒数或 Cooldown 构建体>`（恒在门控链最右：权限先判，通过才盖戳） |
 | 元数据 | `id` / `name`（缺省取函数名）、`description`、`can_disable`（默认 true）、`default_enable`（默认 true）、`hidden`（默认 false） |
 
 命令**头**写在属性里，**参数**声明在 handler 形参上（`Args<T>` / `ArgText` 等），就近落在同一个函数。
+
+无参命令（没有 `Args<T>` 形参，或参数规格为空）**默认**只认「命令词」与「回复 / @bot / 空白 + 命令词」，还有任何其余内容（文本、表情、图片、@别人 等）就不算命中、静默放行——别名取「我的」这类日常词也不会被「我的 xxx」误触发（命令式注册手动 `Matcher::no_args()`）。`exact` 旗标是显式严格模式：整条消息**只能是命令词本身**，连回复 / @bot 都不算（与 `args: Args<T>` 形参同用是编译错；命令式 `Matcher::exact()`）。带参命令、正则与槽位匹配器不自动收紧；前导 @bot 对**所有**命令都是呼叫姿势，匹配前剥掉、不进参数区（`at`/`at_or_id` 不会把它误当目标）。
 
 ## 参数
 

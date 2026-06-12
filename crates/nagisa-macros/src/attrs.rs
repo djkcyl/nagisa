@@ -30,6 +30,9 @@ pub(crate) enum MatcherKind {
 pub(crate) struct CommandArgs {
     pub(crate) kind: MatcherKind,
     pub(crate) mention_me: bool,
+    /// 严格模式（`#[command(.., exact)]`）：整条消息只能是命令词本身，连 回复 / @bot
+    /// 都不算；只对无参命令有意义（与 `args: Args<T>` 形参同用是编译错）。
+    pub(crate) exact: bool,
     pub(crate) priority: i32,
     /// 一级 top 观察者（`#[command(top)]`）；永不被 waiter 拦截。
     pub(crate) top: bool,
@@ -141,6 +144,7 @@ impl Parse for CommandArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut kind: Option<MatcherKind> = None;
         let mut mention_me = false;
+        let mut exact = false;
         let mut top = false;
         let mut priority: i32 = 0;
         let mut meta = MetaArgs::empty();
@@ -170,6 +174,7 @@ impl Parse for CommandArgs {
             }
             match m {
                 Meta::Flag(id) if id == "mention_me" => mention_me = true,
+                Meta::Flag(id) if id == "exact" => exact = true,
                 Meta::Flag(id) if id == "top" => top = true,
                 Meta::Flag(id) => {
                     return Err(Error::new(id.span(), format!("unknown flag `{id}`")));
@@ -211,7 +216,7 @@ impl Parse for CommandArgs {
             )
         })?;
 
-        Ok(CommandArgs { kind, mention_me, priority, top, meta })
+        Ok(CommandArgs { kind, mention_me, exact, priority, top, meta })
     }
 }
 

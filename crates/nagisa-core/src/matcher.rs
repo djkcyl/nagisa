@@ -3,11 +3,17 @@
 //! **一个**触发匹配器:正则核心。`command([..])` 是字面量糖(编译成
 //! `^(?:a|b)(?:\s|$)`),`regex(..)` 是原始正则。给定 `&Ctx` 决定消息是否命中并产出
 //! [`ParsedCommand`]:
-//! - **MentionMe**:剥前导 `@self`(以运行期 `bot.self_id()` 为准)与前导 `/`,再匹配。
+//! - **呼叫姿势预处理(所有命令)**:前导 `@self`(以运行期 `bot.self_id()` 为准)在匹配前
+//!   统一剥掉、不进参数区——否则 `at`/`at_or_id` 元素参会把它当目标吃掉;**MentionMe** 额外
+//!   要求 to_me,并在文本层再剥前导 `/`。
 //! - **匹配**:正则跑在(剥离后的)首个文本段上,`command`=整段匹配(group0,trim),
 //!   `captures`=捕获组。
 //! - 命中后 `args` = 去掉命令文本前缀后的消息段(**保留非文本段**,如图片/回复),
 //!   供 `Args<T>` 在段流上做有序 + 元素解析。
+//! - **剩余内容要求**:无参命令**默认**([`Matcher::no_args`],`#[command]` 自动)只认
+//!   「命令词」与「回复 / @bot / 空白 + 命令词」,再有别的内容整体不算命中,防「我的 xxx」
+//!   这类日常说话误触发;显式严格([`Matcher::exact`],`#[command(.., exact)]`)更狠,
+//!   整条消息只能是命令词本身。带参命令不受影响。
 use crate::ctx::Ctx;
 use nagisa_types::prelude::*;
 use nagisa_types::segment::Segment;
@@ -103,6 +109,20 @@ pub struct Matcher {
     /// `Matcher::slots` 的 命名槽→组下标 映射。空 ⇒ `command`/`regex`(无命名槽),
     /// 命中后 `named_captures` 也为空(既有提取器零影响)。
     slot_names: Vec<(Cow<'static, str>, usize)>,
+    /// 命中后对剩余内容的要求(见 [`Matcher::no_args`] / [`Matcher::exact`])。
+    strictness: Strictness,
+}
+
+/// 命中后对剩余内容的要求。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Strictness {
+    /// 缺省(带参命令):剩余内容不影响命中,交给参数解析。
+    #[default]
+    Any,
+    /// 无参命令的默认:除呼叫姿势(回复 / @bot / 空白)外不得有剩余内容。
+    NoArgs,
+    /// 显式严格(`exact`):整条消息只能是命令词本身,呼叫姿势也不算。
+    Exact,
 }
 
 impl Matcher {
@@ -127,7 +147,14 @@ impl Matcher {
         };
         let pat = format!(r"^(?:{body})(?:\s|$)");
         let re = regex::Regex::new(&pat).expect("escaped command literals form a valid regex");
-        Self { patterns: vec![re], mention_me: false, to_me_only: false, usage: None, slot_names: Vec::new() }
+        Self {
+            patterns: vec![re],
+            mention_me: false,
+            to_me_only: false,
+            usage: None,
+            slot_names: Vec::new(),
+            strictness: Strictness::Any,
+        }
     }
 
     /// 原始正则触发器;编译失败返回 `regex::Error`。捕获组进 `ParsedCommand.captures`。
@@ -145,6 +172,7 @@ impl Matcher {
             to_me_only: false,
             usage: None,
             slot_names: Vec::new(),
+            strictness: Strictness::Any,
         })
     }
 
@@ -214,7 +242,14 @@ impl Matcher {
         }
 
         let re = regex::Regex::new(&pat)?;
-        Ok(Self { patterns: vec![re], mention_me: false, to_me_only: false, usage: None, slot_names })
+        Ok(Self {
+            patterns: vec![re],
+            mention_me: false,
+            to_me_only: false,
+            usage: None,
+            slot_names,
+            strictness: Strictness::Any,
+        })
     }
 
     /// 附带显式用法串(`#[command(usage="…")]`)：命中后随 `ParsedCommand.usage` 携带,
@@ -224,7 +259,8 @@ impl Matcher {
         self
     }
 
-    /// 启用 MentionMe 预处理(剥前导 @self / 前导 `/`),并置 `to_me_only`。
+    /// 要求 @bot 呼叫(置 `to_me_only`),文本层再剥前导 `/`。前导 @self 段的剥离
+    /// 对所有命令统一做,不属本开关。
     pub fn mention_me(mut self) -> Self {
         self.mention_me = true;
         self.to_me_only = true;
@@ -234,6 +270,24 @@ impl Matcher {
     /// 仅要求 to_me(不剥 @;私聊或 @self 时通过)。
     pub fn to_me(mut self) -> Self {
         self.to_me_only = true;
+        self
+    }
+
+    /// 无参命令的**默认**剩余内容要求(`#[command]` 对没有 `Args<T>` 形参或参数规格为空的
+    /// 命令自动调用,命令式注册无参命令请手动加):只认「命令词」与「回复 / @bot / 空白 +
+    /// 命令词」(呼叫姿势的任意子集组合);剩余文本非空,或剩余段里有 回复 / @bot 以外的段
+    /// (表情 / 图片 / @别人 / 语音…)都算内容,整体不算命中(静默放行,不进 parse-miss)
+    /// ——「我的」是查数据,「我的 xxx」只是日常说话,不该触发。
+    pub fn no_args(mut self) -> Self {
+        self.strictness = Strictness::NoArgs;
+        self
+    }
+
+    /// 严格模式(`#[command(.., exact)]` 显式开启):整条消息**只能是命令词本身**,
+    /// 连 回复 / @bot 这些呼叫姿势都不算——比 [`no_args`](Self::no_args) 更狠。
+    /// (与 `mention_me` 同用时 @self 在匹配前已被剥掉,不受此限。)
+    pub fn exact(mut self) -> Self {
+        self.strictness = Strictness::Exact;
         self
     }
 
@@ -247,45 +301,33 @@ impl Matcher {
         let msg = ctx.message()?;
         let self_id = ctx.bot().self_id();
 
-        // —— MentionMe 预处理:剥前导 @self,记录 to_me。——
-        // 段层面保留其它前导段;文本层面再剥前导 `/`。
+        // —— 呼叫姿势预处理(**所有**命令):剥前导 @self(≤2 个),记录 to_me。——
+        // 前导 @bot 是在叫机器人,不是参数——不剥的话 `at`/`at_or_id` 元素参会把它当目标
+        // 吃掉(「@bot 转账 @张三 100」收款人解析成 bot)。一个前导 Reply 段(「回复 +
+        // @bot + 命令」很常见)保留在 args 里,但不能挡住 @self 检测——故 @self 从 Reply
+        // 之后开始看。mention_me 仅额外要求 to_me,并在文本层再剥前导 `/`。
         let mut to_me = msg.peer.scene != Scene::Group; // 私聊天然 to_me
-                                                        // 一个前导 Reply 段(「回复 + @bot + 命令」很常见):保留在 args 里,但不能挡住
-                                                        // @self 检测——故 @self 从 Reply 之后开始看。
         let reply_prefix = usize::from(matches!(msg.content.first(), Some(Segment::Reply { .. })));
-        let segs: std::borrow::Cow<[Segment]> = if self.mention_me {
-            // 剥≤2个前导 @self,Reply 前缀保留。
-            let mut stripped = 0usize;
-            let mut i = reply_prefix;
-            while stripped < 2 {
-                match msg.content.get(i) {
-                    Some(s) if Self::is_mention_self(s, self_id) => {
-                        to_me = true;
-                        i += 1;
-                        stripped += 1;
-                    }
-                    _ => break,
-                }
-            }
-            if stripped == 0 {
-                std::borrow::Cow::Borrowed(&msg.content[..])
-            } else if reply_prefix == 0 {
-                std::borrow::Cow::Borrowed(&msg.content[stripped..])
-            } else {
-                // 中间挖掉 @self、保留前导 Reply,需新建 Vec。
-                let mut v = Vec::with_capacity(msg.content.len() - stripped);
-                v.extend_from_slice(&msg.content[..reply_prefix]);
-                v.extend_from_slice(&msg.content[reply_prefix + stripped..]);
-                std::borrow::Cow::Owned(v)
-            }
-        } else {
-            // 不剥段:群里前导 @self(可能在 Reply 之后)也算 to_me。
-            if let Some(s) = msg.content.get(reply_prefix) {
-                if Self::is_mention_self(s, self_id) {
+        let mut stripped = 0usize;
+        while stripped < 2 {
+            match msg.content.get(reply_prefix + stripped) {
+                Some(s) if Self::is_mention_self(s, self_id) => {
                     to_me = true;
+                    stripped += 1;
                 }
+                _ => break,
             }
+        }
+        let segs: std::borrow::Cow<[Segment]> = if stripped == 0 {
             std::borrow::Cow::Borrowed(&msg.content[..])
+        } else if reply_prefix == 0 {
+            std::borrow::Cow::Borrowed(&msg.content[stripped..])
+        } else {
+            // 中间挖掉 @self、保留前导 Reply,需新建 Vec。
+            let mut v = Vec::with_capacity(msg.content.len() - stripped);
+            v.extend_from_slice(&msg.content[..reply_prefix]);
+            v.extend_from_slice(&msg.content[reply_prefix + stripped..]);
+            std::borrow::Cow::Owned(v)
         };
         let segs: &[Segment] = &segs;
 
@@ -342,6 +384,31 @@ impl Matcher {
                     named_captures.insert(name.clone(), val);
                 }
                 let args = splice_args(segs, first_text_idx, &remainder);
+                // 剩余内容要求:超出允许范围 ⇒ 不算命中(静默放行,不插任何 ext)。
+                // NoArgs(无参命令默认)容忍呼叫姿势:回复 / @bot / 空白;Exact(显式严格)
+                // 连呼叫姿势都不容忍——整条消息只能是命令词本身。
+                let blocked = match self.strictness {
+                    Strictness::Any => false,
+                    Strictness::NoArgs => {
+                        !remainder.is_empty()
+                            || args.iter().any(|s| match s {
+                                Segment::Reply { .. } => false,
+                                Segment::Mention { user, .. } => *user != self_id,
+                                Segment::Text(t) => !t.trim().is_empty(),
+                                _ => true,
+                            })
+                    }
+                    Strictness::Exact => {
+                        !remainder.is_empty()
+                            || args.iter().any(|s| match s {
+                                Segment::Text(t) => !t.trim().is_empty(),
+                                _ => true,
+                            })
+                    }
+                };
+                if blocked {
+                    return None;
+                }
                 // 命中且有显式用法串 → 随事件携带(与 ParsedCommand 同生命周期),供 parse-miss 回贴。
                 if let Some(u) = &self.usage {
                     ctx.insert_ext(CommandUsage(u.clone()));

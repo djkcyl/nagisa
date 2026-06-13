@@ -13,7 +13,7 @@
 //! - **`FromSlots`**:由 `#[derive(Slots)]` 生成,产出 `matcher()` + 从 `named_captures` 投影。
 //! - **`Slots<T>: FromContext`**:`Args<T>` 的镜像,共享同一 parse-miss 路径(`on_parse_miss`)。
 //! - **`Tail<T>`**:贪婪尾槽(`(.*)` → `Option<String>`),或 `Tail<Vec<Segment>>` 收原始多模态尾。
-use crate::args::{on_parse_miss, ArgError, FromArg};
+use crate::args::{on_parse_miss, ArgError, ArgSpec, FromArg};
 use crate::ctx::Ctx;
 use crate::extract::{Extracted, FromContext, Reject};
 use crate::matcher::{Matcher, ParsedCommand};
@@ -62,6 +62,20 @@ pub trait FromSlots: Sized {
     fn usage() -> Option<&'static str> {
         None
     }
+    /// **可枚举的具体命令词**:把「字面块 × 各必填 `union` 块」的笛卡尔积在**编译期**算成一串完整
+    /// 命令词(如 `查看排行榜` / `查看金币榜` …),供 `#[command(slots=..)]` 填进 `TriggerMeta.words`
+    /// → help 像字面命令一样**自动枚举**这些形态。可选块不展开;任一必填块非 `union`(`re`/`tail`,
+    /// 不可枚举)⇒ `&[]`(help 退回按命令名显示)。关联**常量**(非函数)使其可在 `static`/`const`
+    /// 上下文里引用(`#[command]` 注册即静态)。默认 `&[]`。用于 help 的命令词解析("help 查看金币榜")。
+    const COMMAND_WORDS: &'static [&'static str] = &[];
+    /// **用法模板**:把区块序列渲成一行(固定块原样、必填捕获块 `<选项|…>`、可选捕获块 `[选项|…]`),
+    /// 如 `查看<金币|等级|发言>榜[全局|全站]`。供 `#[command(slots=..)]` 填进 `TriggerMeta.synopsis`
+    /// → help 直接当用法行显示(把选项当**参数**呈现,而非别名)。默认空串。
+    const SLOTS_SYNOPSIS: &'static str = "";
+    /// **各捕获槽的参数规格**:每个命名槽产一条 [`ArgSpec`](必填/可选、可选值列进 `desc`),供
+    /// `#[command(slots=..)]` 填进 `TriggerMeta.args` → help 在「参数」区逐行列出(如 `board` 是
+    /// 选择参数、`全局` 是可选开关)。与 `#[derive(Args)]` 的 `SPECS` 同一个 help 渲染通道。默认空。
+    const SLOTS: &'static [ArgSpec] = &[];
 }
 
 /// 类型化命名 slot 提取器:`async fn h(m: Slots<ViewBoard>)`。

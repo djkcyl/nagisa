@@ -121,6 +121,16 @@ pub(crate) fn nagisa_core_root() -> proc_macro2::TokenStream {
 /// 命令**体**(参数)始终声明在 handler 形参上(`args: Args<MyArgs>`),而非属性里:
 /// 头写在属性、体写在形参,二者就近落在同一 handler。
 ///
+/// # 触发语义(命令**不**互斥)
+///
+/// dispatch 对每条消息**逐个**试所有命令的匹配器、命中即跑,**不**首中即停、**不**做「最具体优先」——
+/// 命令型 handler 之间互不阻断(只有 `top` 观察者与中断 `waiter` 的 `block` 能拦)。故两条匹配范围
+/// **重叠**的命令会**都触发**。约定:**命令作者自行保证匹配不重叠**。
+///
+/// 字面量命令词天然不必担心「前缀吃后缀」:它们编成 `^(?:词…)(?:\s|$)`,末尾的 `(?:\s|$)` 边界让
+/// `签到` 不会命中 `签到日历`(CJK 无词边界,靠这个显式边界)。重叠风险主要来自 `regex` / 多命令
+/// 词人为撞车。
+///
 /// # 约束
 ///
 /// handler 必须是非泛型、无 `self` 接收者的 `async fn`(否则编译报错)。
@@ -308,30 +318,38 @@ pub fn derive_arg_enum(input: TokenStream) -> TokenStream {
 /// 一个 `#[derive(Slots)]` 类型可同时用作 `#[command(slots = T)]` 的头匹配器与
 /// `Slots<T>` 提取器的解析目标。
 ///
-/// # 结构体级属性 `#[slots(..)]`
+/// # 结构体级属性 `#[slots(..)]` —— 有序区块序列
 ///
-/// - `#[slots(full = "…")]`:字面量命令头(正则转义后置于槽前)。
-/// - `#[slots(usage = "…")]`:parse-miss 时回贴的用法串。
+/// 命令头是一串自由拼接的**区块**,顺序即声明序:
+/// - `lit("查看")`:**固定块**(正则转义后原样匹配)。
+/// - 裸标识符 `board`:**捕获块**,引用同名字段(其 `#[slot(..)]` 定来源/类型)。
+/// - `sep = "…"`:块间分隔正则(默认 `\s*`,容忍可选空白);`usage = "…"`:parse-miss 回贴串。
+///
+/// 不写任何固定块/字段引用时,序列退化为「字段声明顺序」(简单结构体无需写序列)。
 ///
 /// # 字段属性 `#[slot(..)]`(每字段三选一,必给其一)
 ///
-/// - `#[slot(re = r"(\d+)")]`:原始正则片段。若字段是 tuple(如 `Option<(u8, u8)>`),`re`
-///   须含与元素同数的内捕获组,各组分别经 `FromArg` 解析。
+/// - `#[slot(re = r"(\d+)")]`:原始正则片段。**单值字段须恰含一个捕获组**(无组则自动外包一层);
+///   多选请用 `(a|b)` 而非 `(a)|(b)`——后者是两组,只会绑定第一组(另一支命中时取到空、误判缺失)。
+///   tuple 字段(如 `Option<(u8, u8)>`)则须含与元素同数的内捕获组,各组分别经 `FromArg` 解析。
 /// - `#[slot(union = ["原曲", "哼唱"])]`:字面量交替 `(原曲|哼唱)`,经 `SlotValue` 解回。
 /// - `#[slot(tail)] q: Option<String>`:贪婪尾 `([\s\S]*)` 收剩余文本;也可收
 ///   `Tail<…>` 形态的原始多模态尾。tail 字段不能是 tuple。
 ///
-/// 字段类型 `Option<T>` ⇒ 该槽在正则里外包为可选 ⇒ 缺省时得 `None`。重名槽 = 编译报错。
+/// 字段类型 `Option<T>` ⇒ 该捕获块外包为可选 ⇒ 缺省时得 `None`。重名槽 / 序列里漏引用某字段 /
+/// 引用未声明字段 = 编译报错。`#[command(slots = T)]` 会据「固定块 × 各必填 union 块」的笛卡尔积
+/// 生成具体命令词(`COMMAND_WORDS`)→ help 自动枚举。
 ///
 /// # 示例
 ///
 /// ```rust,ignore
 /// #[derive(Slots)]
-/// #[slots(full = "签到", usage = "签到 [留言]")]
-/// struct SignIn {
-///     #[slot(re = r"(\d+)")] times: Option<u32>,
-///     #[slot(tail)] note: Option<String>,
+/// #[slots(lit("查看"), board, lit("榜"), scope)]
+/// struct ViewRank {
+///     #[slot(union = ["金币", "等级", "发言", "签到"])] board: String,
+///     #[slot(union = ["全局", "全站"])] scope: Option<String>,
 /// }
+/// // 头匹配 查看(金币|等级|发言|签到)榜(全局|全站)?;help 枚举出 查看金币榜 / 查看等级榜 / …
 /// ```
 #[proc_macro_derive(Slots, attributes(slots, slot))]
 pub fn derive_slots(input: TokenStream) -> TokenStream {
@@ -350,18 +368,19 @@ pub fn derive_slots(input: TokenStream) -> TokenStream {
 ///
 /// # 语法
 ///
-/// `matcher! { full = "…", usage = "…", <field>: <ty> = <src>, … }`,其中 `<src>` 为:
+/// `matcher! { lit("…"), <field>: <ty> = <src>, …, sep = "…", usage = "…" }`(同款区块序列),
+/// 其中 `<src>` 为:
 /// - `re("…")`:原始正则片段。
 /// - `union("a", "b")`:字面量交替。
 /// - `tail`:贪婪尾。
 ///
-/// `full` / `usage` 为可选;字段顺序即槽顺序;`Option<ty>` 表示可选槽。
+/// `lit("…")` 是固定块;字段块就地声明类型与来源;`sep` / `usage` 可选;`Option<ty>` 表示可选块。
 ///
 /// # 示例
 ///
 /// ```rust,ignore
 /// let m = matcher! {
-///     full = "查询",
+///     lit("查询"),
 ///     id: Option<u64> = re(r"(\d+)"),
 ///     mode: Option<String> = union("详细", "简略"),
 /// };

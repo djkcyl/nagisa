@@ -324,15 +324,15 @@ pub use nagisa_macros::Args;
 /// (如 `on|off`)。
 pub use nagisa_macros::ArgEnum;
 
-/// `#[derive(Slots)]`:为带结构体级 `#[slots(full="..")]` 头部、以及带类型可选
-/// `#[slot(re=..)]`/`#[slot(union=[..])]`/`#[slot(tail)]` 正则槽的结构体派生 [`FromSlots`],
-/// 可经 [`struct@Slots`]`<T>` 提取。HEAD 侧,与持有 TAIL 的 `#[derive(Args)]` 对称。
-/// `Option<T>` 表可选;元组字段是多分组 codegen(如 `Option<(u8,u8)>`)。具名槽版的
-/// 带类型参数解析。
+/// `#[derive(Slots)]`:命令头 = **有序区块序列**——结构体级 `#[slots(lit("查看"), board, lit("榜"),
+/// scope)]`(`lit("..")` 固定块、裸标识符引用同名字段、`sep=`/`usage=` 键),字段各自 `#[slot(re=..)]`
+/// /`#[slot(union=[..])]`/`#[slot(tail)]` 定来源/类型(`Option<T>` 表可选块)。派生 [`FromSlots`],可经
+/// [`struct@Slots`]`<T>` 提取。HEAD 侧,与持有 TAIL 的 `#[derive(Args)]` 对称;还自动生成
+/// `COMMAND_WORDS`(字面 × 各必填 union 块的笛卡尔积)供 help 像字面命令一样枚举。
 pub use nagisa_macros::Slots;
 
-/// `matcher! { full = "..", <field>: <ty> = re("..")|union("a","b")|tail }`:对同一套
-/// `#[derive(Slots)]` codegen 的函数式糖,用于写一个简单的内联头部 matcher;求值为
+/// `matcher! { lit(".."), <field>: <ty> = re("..")|union("a","b")|tail, sep="..", usage=".." }`:对同一套
+/// `#[derive(Slots)]` codegen 的函数式糖(同样的区块序列),用于写一个内联头部 matcher;求值为
 /// [`Matcher`]。派生宏才是规范形式(它还顺带产出 `Slots<T>` 提取器类型)。
 pub use nagisa_macros::matcher;
 

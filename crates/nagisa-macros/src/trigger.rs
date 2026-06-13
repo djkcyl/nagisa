@@ -117,6 +117,9 @@ struct TriggerVariant {
     /// `TriggerMeta.args` 的值（`<T as ArgsMeta>::SPECS`，命令的 `args: Args<T>` 形参带入；
     /// 无该形参的命令、事件触发器为 `&[]`）。
     meta_args: proc_macro2::TokenStream,
+    /// `TriggerMeta.synopsis` 的值（`#[derive(Slots)]` 槽序列命令取 `<T>::SLOTS_SYNOPSIS` 用法模板；
+    /// 其余命令与事件为 `""`）。
+    meta_synopsis: proc_macro2::TokenStream,
 }
 
 /// 两个属性宏（`#[command]`/`#[event]`）展开的共享骨架：前置校验已过、元数据缺省已算好后，
@@ -153,7 +156,8 @@ fn emit_trigger(
     let hidden = meta.hidden.unwrap_or(false);
     let order = meta.order.unwrap_or(0);
 
-    let TriggerVariant { register_prelude, register_call, trigger_kind, meta_words, meta_args } = variant;
+    let TriggerVariant { register_prelude, register_call, trigger_kind, meta_words, meta_args, meta_synopsis } =
+        variant;
 
     quote! {
         #func
@@ -193,6 +197,7 @@ fn emit_trigger(
                     usage: #usage_lit,
                     words: #meta_words,
                     args: #meta_args,
+                    synopsis: #meta_synopsis,
                     order: #order,
                     can_disable: #can_disable,
                     default_enable: #default_enable,
@@ -253,6 +258,10 @@ pub(crate) fn expand(args: CommandArgs, func: ItemFn) -> syn::Result<proc_macro2
             (MatcherKind::Union(_), Some(t)) => quote! {
                 let m = if <#t as #nc::ArgsMeta>::SPECS.is_empty() { m.no_args() } else { m };
             },
+            // 槽序列命令:无尾 `Args<T>` ⇒ 整条由槽消费,套 no_args 挡多余尾(`查看金币榜单`、
+            // `查看金币榜 乱七八糟` 不误触发);有尾 Args 则由其解析,不收紧。
+            (MatcherKind::Slots(_), None) => quote! { let m = m.no_args(); },
+            (MatcherKind::Slots(_), Some(_)) => quote! {},
             _ => quote! {},
         }
     };
@@ -267,14 +276,24 @@ pub(crate) fn expand(args: CommandArgs, func: ItemFn) -> syn::Result<proc_macro2
     let top = args.top;
     let meta = &args.meta;
 
-    // 字面命令词（首个为主词、其余别名）写进 TriggerMeta.words 供 help 展示。
-    // 正则/槽位匹配器无字面词 ⇒ 空切片。
+    // 字面命令词（首个为主词、其余别名）写进 TriggerMeta.words 供 help 展示与「help <词>」解析。
+    // 字面命令直接列词;槽序列命令取 `COMMAND_WORDS`(头字面 × 各必填 union 块的笛卡尔积,如
+    // 查看排行榜/查看金币榜…)使「help 查看金币榜」也能解析到——但 help 展示时改用下面的 synopsis
+    // 用法模板、并隐藏这些「别名」(它们是参数取值不是真别名);原始正则无可枚举词 ⇒ 空切片。
     let meta_words = match &args.kind {
         MatcherKind::Union(alts) => {
             let lits = alts.iter().map(|s| LitStr::new(s, Span::call_site()));
             quote! { &[ #( #lits ),* ] }
         }
-        _ => quote! { &[] },
+        MatcherKind::Slots(ty) => quote! { <#ty as #nc::FromSlots>::COMMAND_WORDS },
+        MatcherKind::Regex(_) => quote! { &[] },
+    };
+
+    // 槽序列命令把 `SLOTS_SYNOPSIS` 用法模板(如 `查看<金币|等级|发言>榜[全局]`)写进 TriggerMeta,
+    // help 据此把选项当参数显示;其余命令为空串(help 退回 `主词 + 参数`)。
+    let meta_synopsis = match &args.kind {
+        MatcherKind::Slots(ty) => quote! { <#ty as #nc::FromSlots>::SLOTS_SYNOPSIS },
+        _ => quote! { "" },
     };
 
     // `usage="…"` → 给 matcher 挂上显式用法串：命中后随事件携带,
@@ -307,11 +326,16 @@ pub(crate) fn expand(args: CommandArgs, func: ItemFn) -> syn::Result<proc_macro2
         },
         trigger_kind: quote! { #nc::plugin::TriggerKind::Command },
         meta_words,
-        // 有 `args: Args<T>` 形参就取 `<T as ArgsMeta>::SPECS`,供 help 自动生成用法;否则空。
-        meta_args: match find_args_inner(&func) {
-            Some(t) => quote! { <#t as #nc::ArgsMeta>::SPECS },
-            None => quote! { &[] },
+        // 参数规格(help「参数」区):槽序列命令取 `<T>::SLOTS`(每个槽一条);否则有 `args: Args<T>`
+        // 形参就取 `<T as ArgsMeta>::SPECS`;都没有则空。
+        meta_args: match &args.kind {
+            MatcherKind::Slots(ty) => quote! { <#ty as #nc::FromSlots>::SLOTS },
+            _ => match find_args_inner(&func) {
+                Some(t) => quote! { <#t as #nc::ArgsMeta>::SPECS },
+                None => quote! { &[] },
+            },
         },
+        meta_synopsis,
     };
     Ok(emit_trigger(&nc, &func, meta, variant))
 }
@@ -346,9 +370,10 @@ pub(crate) fn expand_event(args: EventArgs, func: ItemFn) -> syn::Result<proc_ma
                           #default_enable, #can_disable, #top, #priority, #kind_path, #gate_tokens, #fn_name)
         },
         trigger_kind: quote! { #nc::plugin::TriggerKind::Event(#kind_path) },
-        // 事件触发器无字面命令词、无命令参数。
+        // 事件触发器无字面命令词、无命令参数、无用法模板。
         meta_words: quote! { &[] },
         meta_args: quote! { &[] },
+        meta_synopsis: quote! { "" },
     };
     Ok(emit_trigger(&nc, &func, meta, variant))
 }

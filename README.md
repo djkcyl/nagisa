@@ -121,7 +121,7 @@ struct Transfer {
 
 文本字段类型需实现 `FromArg`（String / 整数 / f64 / bool / `Uin` 内置）；元素字段类型固定：image/record/video → `Media`、at → `Uin`、reply → `MessageId`、face → `String`。受限选项用 `#[derive(ArgEnum)]`（变体名小写匹配，`#[arg(rename = "原曲", alias = "origin")]` 改名/加别名）。
 
-另一套头匹配：`#[derive(Slots)]` 把「命令头 + 命名正则槽」结构体化——`#[slots(full = "签到", usage = "..")]` + 字段上 `#[slot(re = r"(\d+)")]` / `#[slot(union = ["a", "b"])]` / `#[slot(tail)]`，同一类型既当 `#[command(slots = T)]` 的头又当 `Slots<T>` 提取器；`matcher!{}` 是它的内联纯匹配器糖。
+另一套头匹配：`#[derive(Slots)]` 把命令头写成**有序区块序列**——结构体级 `#[slots(lit("查看"), board, lit("榜"), scope)]`（`lit("..")` 固定块、裸标识符引用同名字段、`sep=`/`usage=` 键），字段上 `#[slot(union = ["金币", "等级"], name = "..", desc = "..")]` / `#[slot(re = r"(\d+)")]` / `#[slot(tail)]` 定来源（`Option<T>` ⇒ 可选块）。同一类型既当 `#[command(slots = T)]` 的头又当 `Slots<T>` 提取器；派生还自动生成用法模板 `查看<board>榜[全局]` 与各槽参数规格喂给 help。`matcher!{}` 是同款的内联纯匹配器糖。
 
 ## 事件
 

@@ -38,8 +38,11 @@ pub struct ParsedCommand {
     pub named_captures: HashMap<Cow<'static, str>, Option<String>>,
 }
 
-/// 一个 slot 在字面量头相对位置。`Pre`+字面量+`Post` 程序编成
-/// `(?:..)?lit(?:..)?`,使字面量头两侧的可选修饰可表达。
+/// 一个 slot 相对字面量头的位置。`Pre`+字面量+`Post` 程序编成 `(?:..)?lit(?:..)?`,使字面量头
+/// 两侧的可选修饰可表达。
+///
+/// **注**:`#[derive(Slots)]`(区块序列模型,字面量是一等区块、按声明序穿插)只产出 `Whole` 槽;
+/// `Pre`/`Post` 仅供**手搓** `Matcher::slots(vec![..])` 时表达「单字面量头两侧的修饰」。日常派生用不到。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flank {
     /// 槽即整个程序(无字面量头侧)。
@@ -339,18 +342,18 @@ impl Matcher {
         // 若 mention_me 启用则额外剥前导 `/`。
         let first_text_idx = segs.iter().position(|s| matches!(s, Segment::Text(_)));
 
-        // 取出首个文本段的内容(trimmed-start,并视情况去掉前导 '/')。
+        // 取出首个文本段的内容,**两端**去空白(并视情况去掉前导 '/')。两端 trim 让所有匹配器对
+        // 尾随空白不敏感——消息末尾不小心多个空格很常见,不该把 `$` 锚定的命令(如 `^[0-9]{6}$`)
+        // 挡在外面。`command` 匹配器本就靠 `(?:\s|$)` 边界容忍尾随空白;`regex`/`slots` 经此也一致受益。
+        // (参数侧不受影响:remainder 本就 `.trim()`,尾随空白早已不进 args。)
         let (match_text_owned, first_text_idx) = match first_text_idx {
             Some(idx) => {
                 let raw = match &segs[idx] {
                     Segment::Text(t) => t.as_str(),
                     _ => unreachable!(),
                 };
-                let trimmed = if self.mention_me {
-                    raw.trim_start().trim_start_matches('/').trim_start()
-                } else {
-                    raw.trim_start()
-                };
+                let trimmed =
+                    if self.mention_me { raw.trim_start().trim_start_matches('/').trim() } else { raw.trim() };
                 (trimmed.to_string(), idx)
             }
             // 无文本段:只有非文本段(正则跑空串,如纯图片消息)。

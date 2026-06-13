@@ -77,6 +77,10 @@ pub struct TriggerMeta {
     /// 命令参数规格（`#[derive(Args)]` 经 `args: Args<T>` 形参带入），供 help 自动生成用法。
     /// 无 `Args<T>` 形参的命令、以及事件触发器为空切片。
     pub args: &'static [crate::args::ArgSpec],
+    /// 显式用法模板（`#[derive(Slots)]` 槽序列命令自动生成，如 `查看<金币|等级|发言>榜[全局]`：
+    /// 固定块原样、必填捕获块 `<选项|…>`、可选捕获块 `[选项|…]`）。非空则 help 用它当用法行、
+    /// 并隐藏「别名」列表（这些词是参数取值而非真别名）。其余命令为空串 ⇒ help 退回 `主词 + 参数`。
+    pub synopsis: &'static str,
     /// help 里同插件命令的展示次序（`#[command(order = N)]`，小在前；缺省 0、并列保持注册序）。
     pub order: i32,
     pub can_disable: bool,

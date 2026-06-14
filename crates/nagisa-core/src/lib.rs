@@ -147,7 +147,9 @@ pub use rule::{
     superuser, switch, to_me, GateReply, KillSwitch, Rule, SleepState, Superusers,
 };
 pub use service::{Service, ServiceBus, Supervisor};
-pub use session::{Delivery, FlightGuard, FlightStore, Scope, Session, WaitFlow, Waiter, WaiterDepth, WaiterStore};
+pub use session::{
+    Delivery, FlightGuard, FlightStore, Replied, Scope, Session, WaitFlow, Waiter, WaiterDepth, WaiterStore,
+};
 pub use slots::{FromSlots, FromTailText, NamedCaptures, SlotValue, Slots, Tail};
 
 /// re-export `inventory`，使 `#[command]` 生成的代码可调用

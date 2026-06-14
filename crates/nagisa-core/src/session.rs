@@ -114,6 +114,18 @@ pub enum WaitFlow<T> {
     Cancel,
 }
 
+/// [`recv_parse`](Waiter::recv_parse) / [`recv_text`](Waiter::recv_text) 一次追问的结局:拿到值、
+/// 用户主动取消、或超时没等到。取代裸 `Option`——把「取消」与「超时」**分开**返回,调用侧据此分别回话
+/// (取消该道别、超时该说没等到),二者不再都塌成 `None`(那曾让发「取消」错报成超时)。
+pub enum Replied<T> {
+    /// 收到并(解析)成功的值。
+    Got(T),
+    /// 命中取消判定,用户主动放弃。
+    Cancelled,
+    /// 到点没等到。
+    TimedOut,
+}
+
 /// store 里一条已注册的 waiter。
 struct WaiterEntry {
     id: u64,
@@ -534,10 +546,10 @@ impl Waiter {
         .await
     }
 
-    /// 等一行自由文本。作用域内首条消息收束 `Some(text)`，但 `cancel` 词的消息收束 `None`。
-    /// 空/纯空白文本忽略（继续等）。超时 → `None`。
-    pub async fn recv_text(&self, timeout: Duration, cancel: &str) -> Option<String> {
-        let cancel = cancel.trim().to_lowercase();
+    /// 等一行自由文本。作用域内首条非空消息收束 [`Replied::Got`];`cancel` 谓词命中的消息 →
+    /// [`Replied::Cancelled`];空/纯空白文本忽略（继续等）；超时 → [`Replied::TimedOut`]。
+    /// `cancel` 是谓词而非单个词面——多词面取消（取消/算了/退出…）由调用方一处定、各处共用。
+    pub async fn recv_text(&self, timeout: Duration, cancel: impl Fn(&str) -> bool) -> Replied<String> {
         self.recv_with_sync(timeout, |ctx| {
             let Some(m) = ctx.message() else { return WaitFlow::Continue };
             let text = m.content.extract_text();
@@ -545,35 +557,36 @@ impl Waiter {
             if trimmed.is_empty() {
                 return WaitFlow::Continue;
             }
-            if trimmed.to_lowercase() == cancel {
-                return WaitFlow::Cancel;
+            if cancel(trimmed) {
+                return WaitFlow::Done(Replied::Cancelled);
             }
-            WaitFlow::Done(text)
+            WaitFlow::Done(Replied::Got(text))
         })
         .await
+        .unwrap_or(Replied::TimedOut)
     }
 
     /// 等一行自由文本并**解析它、失败则重新追问**（[`confirm`](Self::confirm)/
     /// [`recv_text`](Self::recv_text) 的兄弟）。`parse` 把 trim 后的文本映射成 `Ok(value)` →
-    /// 收束 `Some(value)`，或 `Err(hint)` → 回贴 `hint` 并在剩余超时内继续等。`cancel` 词的消息
-    /// 收束 `None`；空/空白输入忽略；超时 → `None`。
+    /// [`Replied::Got`]，或 `Err(hint)` → 回贴 `hint` 并在剩余超时内继续等。`cancel` 谓词命中 →
+    /// [`Replied::Cancelled`]；空/空白输入忽略；超时 → [`Replied::TimedOut`]。
     ///
-    /// 与兄弟方法一样，它在**内部**派生 [`Reply`]（无 `&Reply` 形参）并吞掉发送错误，故一个多步
-    /// 追问收成一次调用：`let Some(c) = waiter.recv_parse(d, "取消", parse_color).await else { … };`。
-    /// 那句礼节性的「已取消」留作调用侧的小尾巴（cancel/超时都返回裸 `None`，与 `recv_text` 一致）。
-    pub async fn recv_parse<T, F>(&self, timeout: Duration, cancel: &str, parse: F) -> Option<T>
+    /// 与兄弟方法一样，它在**内部**派生 [`Reply`]（无 `&Reply` 形参）并吞掉发送错误，故一个多步追问
+    /// 收成一次调用。**取消与超时分开返回**，调用侧据此分别回话（取消道别 / 超时提示），不再都塌成
+    /// 裸 `None`。`cancel` 是谓词——多词面取消由调用方一处定、各处共用。
+    pub async fn recv_parse<T, F, C>(&self, timeout: Duration, cancel: C, parse: F) -> Replied<T>
     where
         F: Fn(&str) -> std::result::Result<T, String>,
+        C: Fn(&str) -> bool,
     {
         // 局部两段式裁决:先同步解析(借 `ctx`),再仅为重新追问把 `ctx` move 进 async 块——
-        // 让 `parse`(一个 `Fn`)留在被 move 的 future 之外。
+        // 让 `parse`/`cancel`(都是 `Fn`)留在被 move 的 future 之外。
         enum Pre<U> {
             Skip,
             Cancel,
             Done(U),
             Reprompt(String),
         }
-        let cancel = cancel.trim().to_lowercase();
         self.recv_with(timeout, move |ctx| {
             let pre = match ctx.message() {
                 None => Pre::Skip,
@@ -582,7 +595,7 @@ impl Waiter {
                     let trimmed = text.trim();
                     if trimmed.is_empty() {
                         Pre::Skip
-                    } else if trimmed.to_lowercase() == cancel {
+                    } else if cancel(trimmed) {
                         Pre::Cancel
                     } else {
                         match parse(trimmed) {
@@ -595,8 +608,8 @@ impl Waiter {
             async move {
                 match pre {
                     Pre::Skip => WaitFlow::Continue,
-                    Pre::Cancel => WaitFlow::Cancel,
-                    Pre::Done(v) => WaitFlow::Done(v),
+                    Pre::Cancel => WaitFlow::Done(Replied::Cancelled),
+                    Pre::Done(v) => WaitFlow::Done(Replied::Got(v)),
                     Pre::Reprompt(hint) => {
                         if let Ok(reply) = Reply::from_context(&ctx).await {
                             let _ = reply.text(hint).await;
@@ -607,6 +620,7 @@ impl Waiter {
             }
         })
         .await
+        .unwrap_or(Replied::TimedOut)
     }
 
     async fn rx_guard(&self) -> tokio::sync::MutexGuard<'_, mpsc::Receiver<Arc<Event>>> {

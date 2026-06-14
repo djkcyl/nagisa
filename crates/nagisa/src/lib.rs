@@ -170,6 +170,7 @@ pub use nagisa_core::{
     // 跨会话 rendezvous(token/bind:此处签发,彼处认领)。
     Rendezvous,
     RendezvousSnapshot,
+    Replied,
     Reply,
     ReplyMsg,
     Router,
@@ -436,7 +437,7 @@ pub mod prelude {
     pub use crate::{Flow, Middleware, Next, RateLimit, RateLimitScope};
 
     // 中断引擎(Session/Waiter/Scope)。
-    pub use crate::{Rendezvous, Scope, Session, WaitFlow, Waiter};
+    pub use crate::{Rendezvous, Replied, Scope, Session, WaitFlow, Waiter};
 
     // 带类型的目标选择器。
     pub use crate::{FriendRef, GroupRef, MemberRef};

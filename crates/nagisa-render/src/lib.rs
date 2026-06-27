@@ -65,6 +65,7 @@
 #![forbid(unsafe_code)]
 
 mod build;
+mod canvas;
 mod error;
 mod font;
 mod highlight;
@@ -78,6 +79,7 @@ pub use build::{
     BadgeBuilder, ColumnsBuilder, Doc, ImageBuilder, ListBuilder, PanelBuilder, ParaBuilder, ProgressBuilder,
     StyleBuilder, TableBuilder, WatermarkBuilder,
 };
+pub use canvas::{Canvas, Radar};
 pub use error::{Error, Result};
 pub use font::FontHandle;
 pub use markup::parse as parse_markup;

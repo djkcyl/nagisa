@@ -20,11 +20,11 @@ use crate::theme::{OutputFormat, RenderOptions};
 /// 渲染并按 `opts.format` 编码为图片字节。
 pub(crate) fn paint(layout: &Layout, opts: &RenderOptions) -> Result<Vec<u8>> {
     let pix = render_pixmap(layout, opts)?;
-    encode(&pix, opts.format)
+    encode_pixmap(&pix, opts.format)
 }
 
-/// 把渲染好的画布按格式编码。
-fn encode(pix: &Pixmap, format: OutputFormat) -> Result<Vec<u8>> {
+/// 把渲染好的画布按格式编码(也供 [`crate::canvas::Canvas`] 复用)。
+pub(crate) fn encode_pixmap(pix: &Pixmap, format: OutputFormat) -> Result<Vec<u8>> {
     let enc = |e: image::ImageError| Error::Encode(e.to_string());
     let (w, h) = (pix.width(), pix.height());
     match format {
@@ -32,7 +32,7 @@ fn encode(pix: &Pixmap, format: OutputFormat) -> Result<Vec<u8>> {
         OutputFormat::Png => pix.encode_png().map_err(|e| Error::Encode(e.to_string())),
         // PNG 快压:image 的 PngEncoder + Fast 等级(去预乘的 RGBA)。
         OutputFormat::PngFast => {
-            let rgba = pixmap_to_rgba(pix);
+            let rgba = pixmap_to_rgba_bytes(pix);
             let mut buf = Vec::new();
             image::codecs::png::PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::Adaptive)
                 .write_image(&rgba, w, h, ExtendedColorType::Rgba8)
@@ -51,7 +51,7 @@ fn encode(pix: &Pixmap, format: OutputFormat) -> Result<Vec<u8>> {
                     )))
                 };
             }
-            let rgba = pixmap_to_rgba(pix);
+            let rgba = pixmap_to_rgba_bytes(pix);
             let mut buf = Vec::new();
             image::codecs::webp::WebPEncoder::new_lossless(&mut buf)
                 .write_image(&rgba, w, h, ExtendedColorType::Rgba8)
@@ -65,11 +65,12 @@ fn encode(pix: &Pixmap, format: OutputFormat) -> Result<Vec<u8>> {
 pub(crate) fn paint_rgba(layout: &Layout, opts: &RenderOptions) -> Result<image::RgbaImage> {
     let pix = render_pixmap(layout, opts)?;
     let (w, h) = (pix.width(), pix.height());
-    image::RgbaImage::from_raw(w, h, pixmap_to_rgba(&pix)).ok_or_else(|| Error::Layout("RGBA 缓冲尺寸不符".into()))
+    image::RgbaImage::from_raw(w, h, pixmap_to_rgba_bytes(&pix))
+        .ok_or_else(|| Error::Layout("RGBA 缓冲尺寸不符".into()))
 }
 
-/// 预乘画布 → 去预乘的 RGBA 字节(`straight = premul * 255 / a`)。
-fn pixmap_to_rgba(pix: &Pixmap) -> Vec<u8> {
+/// 预乘画布 → 去预乘的 RGBA 字节(`straight = premul * 255 / a`;也供 [`crate::canvas::Canvas`] 复用)。
+pub(crate) fn pixmap_to_rgba_bytes(pix: &Pixmap) -> Vec<u8> {
     let mut out = Vec::with_capacity((pix.width() * pix.height() * 4) as usize);
     for p in pix.pixels() {
         let a = p.alpha();
